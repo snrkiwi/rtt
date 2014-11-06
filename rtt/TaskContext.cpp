@@ -378,6 +378,7 @@ namespace RTT
     void TaskContext::clear()
     {
         tcservice->clear();
+        tcrequests->clear();
     }
 
     bool TaskContext::ready()
