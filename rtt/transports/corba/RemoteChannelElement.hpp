@@ -59,9 +59,6 @@ namespace RTT {
 	    : public CRemoteChannelElement_i
 	    , public base::ChannelElement<T>
 	{
-	    typename internal::ValueDataSource<T>::shared_ptr value_data_source;
-	    typename internal::LateReferenceDataSource<T>::shared_ptr ref_data_source;
-	    typename internal::LateConstReferenceDataSource<T>::shared_ptr const_ref_data_source;
 
 	    /**
 	     * Becomes false if we couldn't transfer data to remote
@@ -83,12 +80,9 @@ namespace RTT {
 	     * @param poa The POA that manages the underlying CRemoteChannelElement_i.
 	     */
 	    RemoteChannelElement(CorbaTypeTransporter const& transport, DataFlowInterface* sender, PortableServer::POA_ptr poa, bool is_pull)
-	    : CRemoteChannelElement_i(transport, poa),
-	      value_data_source(new internal::ValueDataSource<T>),
-	      ref_data_source(new internal::LateReferenceDataSource<T>),
-	      const_ref_data_source(new internal::LateConstReferenceDataSource<T>),
-	      valid(true), pull(is_pull),
-	      msender(sender)
+        : CRemoteChannelElement_i(transport, poa)
+        , valid(true), pull(is_pull)
+        , msender(sender)
             {
                 // Big note about cleanup: The RTT will dispose this object through
 	            // the ChannelElement<T> refcounting. So we only need to inform the
@@ -99,6 +93,10 @@ namespace RTT {
                 oid = mpoa->activate_object(this);
                 // Force creation of dispatcher.
                 CorbaDispatcher::Instance(msender);
+            }
+
+            ~RemoteChannelElement()
+            {
             }
 
             /** Increase the reference count, called from the CORBA side */
@@ -248,8 +246,10 @@ namespace RTT {
                 {
                     if ( remote_side && (cfs = remote_side->read(remote_value, copy_old_data) ) )
                     {
-                        ref_data_source->setPointer(&sample);
-                        transport.updateFromAny(&remote_value.in(), ref_data_source);
+                        internal::LateReferenceDataSource<T> ref_data_source;
+                        ref_data_source.ref();
+                        ref_data_source.setPointer(&sample);
+                        transport.updateFromAny(&remote_value.in(), &ref_data_source);
                         return (FlowStatus)cfs;
                     }
                     else
@@ -280,14 +280,16 @@ namespace RTT {
             {
 
                 FlowStatus fs;
-                if ( (fs = base::ChannelElement<T>::read(value_data_source->set(), copy_old_data)) )
+                typename internal::ValueDataSource<T> value_data_source;
+                value_data_source.ref();
+                if ( (fs = base::ChannelElement<T>::read(value_data_source.set(), copy_old_data)) )
                 {
-                    sample = transport.createAny(value_data_source);
+                    sample = transport.createAny(&value_data_source);
                     if ( sample != 0) {
                         return (CFlowStatus)fs;
                     }
                     // this is a programmatic error and should never happen during run-time.
-                    log(Error) << "CORBA Transport failed to create Any for " << value_data_source->getTypeName() << " while it should have!" <<endlog();
+                    log(Error) << "CORBA Transport failed to create Any for " << value_data_source.getTypeName() << " while it should have!" <<endlog();
                 }
                 // we *must* return something in sample.
                 sample = new CORBA::Any();
@@ -306,8 +308,9 @@ namespace RTT {
                     // There is a trick. We allocate on the stack, but need to
                     // provide shared pointers. Manually increment refence count
                     // (the stack "owns" the object)
-                    const_ref_data_source->setPointer(&sample);
-                    CORBA::Any_var ret = transport.createAny(const_ref_data_source);
+                    internal::LateConstReferenceDataSource<T> const_ref_data_source(&sample);
+                    const_ref_data_source.ref();
+                    CORBA::Any_var ret = transport.createAny(&const_ref_data_source);
                     remote_side->write(ret); 
                     return true;
                 }
@@ -332,8 +335,10 @@ namespace RTT {
           	      CORBA::SystemException
           	    ))
             {
-                transport.updateFromAny(&sample, value_data_source);
-                base::ChannelElement<T>::write(value_data_source->rvalue());
+                typename internal::ValueDataSource<T> value_data_source;
+                value_data_source.ref();
+                transport.updateFromAny(&sample, &value_data_source);
+                base::ChannelElement<T>::write(value_data_source.rvalue());
             }
 
             virtual bool data_sample(typename base::ChannelElement<T>::param_t sample)
