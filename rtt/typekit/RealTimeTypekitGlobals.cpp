@@ -78,6 +78,8 @@ namespace RTT
         globals->setValue( new Constant<BufferPolicy>("Shared", Shared) );
         globals->setValue( new Constant<int>("ORO_SCHED_RT", ORO_SCHED_RT) );
         globals->setValue( new Constant<int>("ORO_SCHED_OTHER", ORO_SCHED_OTHER) );
+        globals->setValue( new Constant<int>("ORO_WAIT_ABS", ORO_WAIT_ABS) );
+        globals->setValue( new Constant<int>("ORO_WAIT_REL", ORO_WAIT_REL) );
 #endif
         return true;
     }
