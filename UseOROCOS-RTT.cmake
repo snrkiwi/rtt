@@ -129,9 +129,11 @@ if(OROCOS-RTT_FOUND AND NOT USE_OROCOS_RTT)
     set (OROCOS_SUFFIX "/${OROCOS_TARGET}")
   endif()
 
-  # Enable auto-linking
+  # Enable auto-linking and installation
   set(OROCOS_NO_AUTO_LINKING OFF CACHE BOOL "Disable automatic linking to targets in orocos_use_package() or from dependencies in the package manifest. Auto-linking is enabled by default.")
+  set(OROCOS_NO_AUTO_INSTALL OFF CACHE BOOL "Disable automatic installation of Orocos targets. Auto-installation is enabled by default.")
 
+  # Set build system specific variables
   if (ORO_USE_ROSBUILD)
     # Infer package name from directory name.
     get_filename_component(ORO_ROSBUILD_PACKAGE_NAME ${PROJECT_SOURCE_DIR} NAME)
@@ -226,301 +228,299 @@ if(OROCOS-RTT_FOUND AND NOT USE_OROCOS_RTT)
     message(STATUS "[UseOrocos] Building runtime targets in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
   endif()
 
+  # Set default install destinations:
+  set(ORO_LIBRARY_DESTINATION lib )
+  if(NOT ORO_USE_CATKIN)
+    set(ORO_RUNTIME_DESTINATION bin )
+  else()
+    set(ORO_RUNTIME_DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
+  endif()
+  set(ORO_INCLUDE_DESTINATION include/orocos/${PROJECT_NAME} )
+  set(ORO_COMPONENT_DESTINATION lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME} )
+  set(ORO_EXECUTABLE_DESTINATION ${ORO_RUNTIME_DESTINATION} )
+  set(ORO_TYPEKIT_DESTINATION lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types )
+  set(ORO_PLUGIN_DESTINATION lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/plugins )
+
   # Necessary for correctly building mixed libraries on win32.
   if(OROCOS_TARGET STREQUAL "win32")
     set(CMAKE_DEBUG_POSTFIX "d")
   endif(OROCOS_TARGET STREQUAL "win32")
 
-  # Components should add themselves by calling 'OROCOS_COMPONENT' 
-  # instead of 'ADD_LIBRARY' in CMakeLists.txt.
-  # You can set a variable COMPONENT_VERSION x.y.z to set a version or 
-  # specify the optional VERSION parameter. For ros builds, the version
-  # number is ignored.
+  # Internal macro to configure a target for Orocos RTT.
   #
-  # Usage: orocos_component( COMPONENT_NAME src1 src2 src3 [INSTALL lib/orocos/${PROJECT_NAME}] [VERSION x.y.z] )
+  # Usage: _orocos_target( target (COMPONENT|LIBRARY|EXECTUABLE|TYPEKIT|PLUGIN) [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
   #
-  macro( orocos_component COMPONENT_NAME )
-    ORO_PARSE_ARGUMENTS(ADD_COMPONENT
+  macro( _orocos_target target target_type )
+    cmake_parse_arguments(_orocos_target
+      "SKIP_INSTALL"
       "INSTALL;VERSION"
       ""
       ${ARGN}
       )
-    SET( SOURCES ${ADD_COMPONENT_DEFAULT_ARGS} )
-    SET( LIB_NAME "${COMPONENT_NAME}-${OROCOS_TARGET}")
-    # Extract install directory:
-    if ( ADD_COMPONENT_INSTALL )
-      set(AC_INSTALL_DIR ${ADD_COMPONENT_INSTALL}${OROCOS_SUFFIX})
-      set(AC_INSTALL_RT_DIR bin)
-    else()
-      set(AC_INSTALL_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME})
-      set(AC_INSTALL_RT_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME})
-    endif()
 
-    # Set library name:
+    # Set library output name:
     if ( ${OROCOS_TARGET} STREQUAL "gnulinux" OR ${OROCOS_TARGET} STREQUAL "lxrt" OR ${OROCOS_TARGET} STREQUAL "xenomai" OR ${OROCOS_TARGET} STREQUAL "win32" OR ${OROCOS_TARGET} STREQUAL "macosx")
-      set( COMPONENT_LIB_NAME ${COMPONENT_NAME}-${OROCOS_TARGET})
+      if( NOT target MATCHES ".*-${OROCOS_TARGET}$")
+        set(_orocos_target_OUTPUT_NAME OUTPUT_NAME ${target}-${OROCOS_TARGET})
+      else()
+        set(_orocos_target_OUTPUT_NAME OUTPUT_NAME ${target})
+      endif()
     else()
-      set( COMPONENT_LIB_NAME ${COMPONENT_NAME})
+      set(_orocos_target_OUTPUT_NAME OUTPUT_NAME ${target})
     endif()
 
-    # Set component version:
-    if (COMPONENT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${COMPONENT_VERSION})
-    endif(COMPONENT_VERSION)
-    if (ADD_COMPONENT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${ADD_COMPONENT_VERSION})
-    endif(ADD_COMPONENT_VERSION)
-
-    # Clear the dependencies such that a target switch can be detected:
-    unset( ${COMPONENT_NAME}_LIB_DEPENDS )
-
-    # Use rosbuild in ros environments:
-    if (ORO_USE_ROSBUILD)
-      MESSAGE( STATUS "[UseOrocos] Building component ${COMPONENT_NAME} in library ${COMPONENT_LIB_NAME} in rosbuild source tree." )
-      rosbuild_add_library(${COMPONENT_NAME} ${SOURCES} )
-    else()
-      MESSAGE( STATUS "[UseOrocos] Building component ${COMPONENT_NAME} in library ${COMPONENT_LIB_NAME}" )
-      ADD_LIBRARY( ${COMPONENT_NAME} SHARED ${SOURCES} )
-    endif()
-
-    # Prepare component lib for out-of-the-ordinary lib directories
-    SET_TARGET_PROPERTIES( ${COMPONENT_NAME} PROPERTIES
-      OUTPUT_NAME ${COMPONENT_LIB_NAME}
-      LIBRARY_OUTPUT_DIRECTORY ${ORO_COMPONENT_OUTPUT_DIRECTORY}
-      DEFINE_SYMBOL "RTT_COMPONENT"
-      ${LIB_COMPONENT_VERSION}
+    # Set output and installation directory and depending on target type:
+    if(ORO_${target_type}_OUTPUT_DIRECTORY)
+      set(_orocos_target_OUTPUT_DIRECTORY
+        LIBRARY_OUTPUT_DIRECTORY ${ORO_${target_type}_OUTPUT_DIRECTORY}
+        ARCHIVE_OUTPUT_DIRECTORY ${ORO_${target_type}_OUTPUT_DIRECTORY}
       )
+    else()
+      set(_orocos_target_OUTPUT_DIRECTORY)
+    endif()
+    set(_orocos_target_LIBRARY_DESTINATION ${ORO_${target_type}_DESTINATION})
+    set(_orocos_target_RUNTIME_DESTINATION ${ORO_RUNTIME_DESTINATION})
+    if(_orocos_target_INSTALL)
+      set(_orocos_target_LIBRARY_DESTINATION ${_orocos_target_INSTALL})
+      set(_orocos_target_RUNTIME_DESTINATION ${_orocos_target_INSTALL})
+    endif()
 
-    orocos_add_include_directories( ${COMPONENT_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags( ${COMPONENT_NAME} ${USE_OROCOS_CFLAGS_OTHER})
-    orocos_add_link_flags( ${COMPONENT_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
-    orocos_set_install_rpath( ${COMPONENT_NAME} ${USE_OROCOS_LIBRARY_DIRS})
+    # Set library version:
+    if (_orocos_target_VERSION)
+      set(_orocos_target_VERSION VERSION ${_orocos_target_VERSION})
+    elseif(COMPONENT_VERSION)
+      set(_orocos_target_VERSION VERSION ${COMPONENT_VERSION})
+    else()
+      set(_orocos_target_VERSION)
+    endif()
 
-    TARGET_LINK_LIBRARIES( ${COMPONENT_NAME}
-      ${OROCOS-RTT_LIBRARIES} 
-      #${OROCOS-RTT_TYPEKIT_LIBRARIES} 
+    # Prepare lib for out-of-the-ordinary lib directories:
+    set_target_properties( ${target} PROPERTIES
+      ${_orocos_target_OUTPUT_NAME}
+      ${_orocos_target_OUTPUT_DIRECTORY}
+      ${_orocos_target_VERSION}
+    )
+
+    orocos_add_include_directories( ${target} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
+    orocos_add_compile_flags( ${target} ${USE_OROCOS_CFLAGS_OTHER})
+    orocos_add_link_flags( ${target} ${USE_OROCOS_LDFLAGS_OTHER})
+    orocos_set_install_rpath( ${target} ${USE_OROCOS_LIBRARY_DIRS})
+
+    target_link_libraries( ${target}
+      ${OROCOS-RTT_LIBRARIES}
+      #${OROCOS-RTT_TYPEKIT_LIBRARIES}
       )
 
     # Only link in case there is something *and* the user didn't opt-out:
     if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${COMPONENT_NAME} ${USE_OROCOS_LIBRARIES} )
+      target_link_libraries( ${target} ${USE_OROCOS_LIBRARIES} )
       if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${COMPONENT_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
+        message(STATUS "[UseOrocos] Linking target '${target}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
       endif()
     endif()
 
-    # Install
-    # On win32, component runtime (.dll) should go in orocos folder
-    if( ${OROCOS_TARGET} STREQUAL "win32" )
-      INSTALL(TARGETS ${COMPONENT_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_DIR})
-    else()
-      INSTALL(TARGETS ${COMPONENT_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_RT_DIR})
+    # Install:
+    if((NOT OROCOS_NO_AUTO_INSTALL AND NOT _orocos_target_SKIP_INSTALL) OR _orocos_target_INSTALL)
+      install(TARGETS ${target}
+        LIBRARY DESTINATION ${_orocos_target_LIBRARY_DESTINATION}
+        ARCHIVE DESTINATION ${_orocos_target_LIBRARY_DESTINATION}
+        RUNTIME DESTINATION ${_orocos_target_RUNTIME_DESTINATION}
+      )
+      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
+        if(WIN32 OR target_type STREQUAL "EXECUTABLE")
+          message(STATUS "[UseOrocos] Installing target '${target}' to destination ${_orocos_target_RUNTIME_DESTINATION}. To disable this, set OROCOS_NO_AUTO_INSTALL to true.")
+        else()
+          message(STATUS "[UseOrocos] Installing target '${target}' to destination ${_orocos_target_LIBRARY_DESTINATION}. To disable this, set OROCOS_NO_AUTO_INSTALL to true.")
+        endif()
+      endif()
     endif()
 
+    # Export target for orocos_find_package() calls in the same workspace:
+    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${target}")
+    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/${_orocos_target_LIBRARY_DESTINATION}")
+
+    # Unset temporary variables
+    unset(_orocos_target_INSTALL)
+    unset(_orocos_target_SKIP_INSTALL)
+    unset(_orocos_target_OUTPUT_NAME)
+    unset(_orocos_target_OUTPUT_DIRECTORY)
+    unset(_orocos_target_LIBRARY_DESTINATION)
+    unset(_orocos_target_RUNTIME_DESTINATION)
+    unset(_orocos_target_VERSION)
+
+  endmacro()
+
+  # Components should add themselves by calling 'OROCOS_COMPONENT' 
+  # instead of 'add_library' in CMakeLists.txt.
+  # You can set a variable COMPONENT_VERSION x.y.z to set a version or 
+  # specify the optional VERSION parameter. For ros builds, the version
+  # number is ignored.
+  #
+  # Usage:
+  #   orocos_component( componentname src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #      or
+  #   add_library( target SHARED src1 [src2 ...] )
+  #   orocos_component( target [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #
+  macro( orocos_component target )
+    cmake_parse_arguments(_orocos_component
+      "SKIP_INSTALL"
+      "INSTALL;VERSION"
+      ""
+      ${ARGN}
+      )
+
+    set(_orocos_component_SOURCES ${_orocos_component_UNPARSED_ARGUMENTS} )
+
+    # Clear the dependencies such that a target switch can be detected:
+    unset( ${target}_LIB_DEPENDS )
+
+    # Build the target:
+    if(_orocos_component_SOURCES)
+      # Use rosbuild in ros environments:
+      if (ORO_USE_ROSBUILD)
+        message( STATUS "[UseOrocos] Building component ${target} in library ${target} in rosbuild source tree." )
+        rosbuild_add_library(${target} ${_orocos_component_SOURCES} )
+      else()
+        message( STATUS "[UseOrocos] Building component ${target} in library ${target}" )
+        add_library( ${target} SHARED ${_orocos_component_SOURCES} )
+      endif()
+    endif()
+
+    # Check if the target exists:
+    if(NOT TARGET ${target})
+      message(FATAL_ERROR "[UseOrocos] Target '${target}' does not exist in orocos_component()." )
+    endif()
+
+    # Configure the target as a component library:
+    _orocos_target(${target} COMPONENT ${ARGN})
+    set_target_properties(${target} PROPERTIES DEFINE_SYMBOL "RTT_COMPONENT")
+
     # Necessary for .pc file generation
-    list(APPEND OROCOS_DEFINED_COMPS " -l${COMPONENT_LIB_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${COMPONENT_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/${AC_INSTALL_DIR}")
+    get_target_property(_orocos_component_OUTPUT_NAME ${target} OUTPUT_NAME)
+    list(APPEND OROCOS_DEFINED_COMPS " -l${_orocos_component_OUTPUT_NAME}")
+
+    # Unset temporary variables
+    unset(_orocos_component_SOURCES)
+    unset(_orocos_component_INSTALL)
+    unset(_orocos_component_SKIP_INSTALL)
+    unset(_orocos_component_VERSION)
+    unset(_orocos_component_OUTPUT_NAME)
+
   endmacro( orocos_component )
 
-# Utility libraries should add themselves by calling 'orocos_library()' 
-# instead of 'ADD_LIBRARY' in CMakeLists.txt.
-# You can set a variable COMPONENT_VERSION x.y.z to set a version or 
-# specify the optional VERSION parameter. For ros builds, the version
-# number is ignored.
-#
-# Usage: orocos_library( libraryname src1 src2 src3 [VERSION x.y.z] )
-#
-macro( orocos_library LIB_TARGET_NAME )
+  # Utility libraries should add themselves by calling 'orocos_library()'
+  # instead of 'add_library' in CMakeLists.txt.
+  # You can set a variable COMPONENT_VERSION x.y.z to set a version or
+  # specify the optional VERSION parameter. For ros builds, the version
+  # number is ignored.
+  #
+  # Usage:
+  #   orocos_library( libraryname src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #      or
+  #   add_library( target SHARED src1 [src2 ...] )
+  #   orocos_library( target [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #
+  macro( orocos_library target )
+    cmake_parse_arguments(_orocos_library
+      "SKIP_INSTALL"
+      "INSTALL;VERSION"
+      ""
+      ${ARGN}
+      )
 
-  ORO_PARSE_ARGUMENTS(ORO_LIBRARY
-    "INSTALL;VERSION"
-    ""
-    ${ARGN}
-    )
-  SET( SOURCES ${ORO_LIBRARY_DEFAULT_ARGS} )
-  if ( ORO_LIBRARY_INSTALL )
-    set(AC_INSTALL_DIR ${ORO_LIBRARY_INSTALL})
-    set(AC_INSTALL_RT_DIR bin)
-  else()
-    set(AC_INSTALL_DIR lib)
-    set(AC_INSTALL_RT_DIR bin)
-  endif()
-  
-  if ( ${OROCOS_TARGET} STREQUAL "gnulinux" OR ${OROCOS_TARGET} STREQUAL "lxrt" OR ${OROCOS_TARGET} STREQUAL "xenomai" OR ${OROCOS_TARGET} STREQUAL "win32" OR ${OROCOS_TARGET} STREQUAL "macosx")
-      set( LIB_NAME ${LIB_TARGET_NAME}-${OROCOS_TARGET})
-    else()
-      set( LIB_NAME ${LIB_TARGET_NAME})
-    endif()
+    set(_orocos_library_SOURCES ${_orocos_library_UNPARSED_ARGUMENTS} )
 
     # Clear the dependencies such that a target switch can be detected:
-    unset( ${LIB_TARGET_NAME}_LIB_DEPENDS )
+    unset( ${target}_LIB_DEPENDS )
 
-    if (ORO_USE_ROSBUILD)
-      MESSAGE( STATUS "[UseOrocos] Building library ${LIB_TARGET_NAME} in rosbuild source tree." )
-      rosbuild_add_library(${LIB_TARGET_NAME} ${SOURCES} )
-    else()
-      MESSAGE( STATUS "[UseOrocos] Building library ${LIB_TARGET_NAME}" )
-      ADD_LIBRARY( ${LIB_TARGET_NAME} SHARED ${SOURCES} )
-    endif()
-
-    if (COMPONENT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${COMPONENT_VERSION})
-    endif(COMPONENT_VERSION)
-    if (ORO_LIBRARY_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${ORO_LIBRARY_VERSION})
-    endif(ORO_LIBRARY_VERSION)
-
-    SET_TARGET_PROPERTIES( ${LIB_TARGET_NAME} PROPERTIES
-      OUTPUT_NAME ${LIB_NAME}
-      ${LIB_COMPONENT_VERSION}
-      )
-
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER} )
-    orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER} )
-    orocos_set_install_rpath( ${LIB_TARGET_NAME} "${USE_OROCOS_LIBRARY_DIRS};${OROCOS-RTT_LIBRARY_DIRS};${CMAKE_INSTALL_PREFIX}/lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME};${CMAKE_INSTALL_PREFIX}/lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types;${CMAKE_INSTALL_PREFIX}/lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/plugins;${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_INSTALL_PREFIX}/${AC_INSTALL_DIR}" )
-
-    TARGET_LINK_LIBRARIES( ${LIB_TARGET_NAME} 
-      ${OROCOS-RTT_LIBRARIES} 
-      #${OROCOS-RTT_TYPEKIT_LIBRARIES} 
-      )
-
-    # Only link in case there is something *and* the user didn't opt-out:
-    if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${LIB_TARGET_NAME} ${USE_OROCOS_LIBRARIES} )
-      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${LIB_TARGET_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
+    # Build the target:
+    if(_orocos_library_SOURCES)
+      # Use rosbuild in ros environments:
+      if (ORO_USE_ROSBUILD)
+        message( STATUS "[UseOrocos] Building library ${target} in rosbuild source tree." )
+        rosbuild_add_library(${target} ${_orocos_library_SOURCES} )
+      else()
+        message( STATUS "[UseOrocos] Building library ${target}" )
+        add_library( ${target} SHARED ${_orocos_library_SOURCES} )
       endif()
     endif()
 
-    INSTALL(TARGETS ${LIB_TARGET_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_RT_DIR})
+    # Check if the target exists:
+    if(NOT TARGET ${target})
+      message(FATAL_ERROR "[UseOrocos] Target '${target}' does not exist in orocos_library().")
+    endif()
+
+    # Configure the target as a library:
+    _orocos_target(${target} LIBRARY ${ARGN})
 
     # Necessary for .pc file generation
-    list(APPEND OROCOS_DEFINED_LIBS " -l${LIB_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${LIB_TARGET_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/${AC_INSTALL_DIR}")
+    get_target_property(_orocos_library_OUTPUT_NAME ${target} OUTPUT_NAME)
+    list(APPEND OROCOS_DEFINED_LIBS " -l${_orocos_library_OUTPUT_NAME}")
+
+    # Unset temporary variables
+    unset(_orocos_library_SOURCES)
+    unset(_orocos_library_INSTALL)
+    unset(_orocos_library_SKIP_INSTALL)
+    unset(_orocos_library_VERSION)
+    unset(_orocos_library_OUTPUT_NAME)
+
   endmacro( orocos_library )
 
   # Executables should add themselves by calling 'orocos_executable()'
   # instead of 'ADD_EXECUTABLE' in CMakeLists.txt.
   #
-  # Usage: orocos_executable( executablename src1 src2 src3 [INSTALL bin] )
+  # Usage:
+  #   orocos_executable( executablename src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] )
+  #      or
+  #   add_executable( target src1 [src2 ...] )
+  #   orocos_executable( target [INSTALL custom/install/destination] [SKIP_INSTALL] )
   #
-  macro( orocos_executable EXE_TARGET_NAME )
-
-    ORO_PARSE_ARGUMENTS(ORO_EXECUTABLE
+  macro( orocos_executable target )
+    cmake_parse_arguments(_orocos_executable
+      "SKIP_INSTALL"
       "INSTALL"
       ""
       ${ARGN}
       )
-    SET( SOURCES ${ORO_EXECUTABLE_DEFAULT_ARGS} )
-    if ( ORO_EXECUTABLE_INSTALL )
-      set(AC_INSTALL_DIR ${ORO_EXECUTABLE_INSTALL})
-      set(AC_INSTALL_RT_DIR bin)
-    else()
-      set(AC_INSTALL_DIR lib)
-      set(AC_INSTALL_RT_DIR bin)
-    endif()
 
-    if ( ${OROCOS_TARGET} STREQUAL "gnulinux" OR ${OROCOS_TARGET} STREQUAL "lxrt" OR ${OROCOS_TARGET} STREQUAL "xenomai" OR ${OROCOS_TARGET} STREQUAL "win32" OR ${OROCOS_TARGET} STREQUAL "macosx")
-      set( EXE_NAME ${EXE_TARGET_NAME}-${OROCOS_TARGET})
-    else()
-      set( EXE_NAME ${EXE_TARGET_NAME})
-    endif()
+    set(_orocos_executable_SOURCES ${_orocos_executable_UNPARSED_ARGUMENTS} )
 
-    if (ORO_USE_ROSBUILD)
-      MESSAGE( STATUS "[UseOrocos] Building executable ${EXE_TARGET_NAME} in rosbuild source tree." )
-      rosbuild_add_executable(${EXE_TARGET_NAME} ${SOURCES} )
-    else()
-      MESSAGE( STATUS "[UseOrocos] Building executable ${EXE_TARGET_NAME}" )
-      ADD_EXECUTABLE( ${EXE_TARGET_NAME} ${SOURCES} )
-    endif()
+    # Clear the dependencies such that a target switch can be detected:
+    unset( ${target}_LIB_DEPENDS )
 
-    SET_TARGET_PROPERTIES( ${EXE_TARGET_NAME} PROPERTIES
-      OUTPUT_NAME ${EXE_NAME}
-      )
-
-    if(CMAKE_DEBUG_POSTFIX)
-      set_target_properties( ${EXE_TARGET_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} )
-    endif(CMAKE_DEBUG_POSTFIX)
-
-    orocos_add_include_directories( ${EXE_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags(${EXE_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
-    orocos_add_link_flags(${EXE_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
-    orocos_set_install_rpath( ${EXE_TARGET_NAME} ${USE_OROCOS_LIBRARY_DIRS})
-
-    TARGET_LINK_LIBRARIES( ${EXE_TARGET_NAME} 
-      ${OROCOS-RTT_LIBRARIES} 
-      )
-
-    # Only link in case there is something *and* the user didn't opt-out:
-    if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${EXE_TARGET_NAME} ${USE_OROCOS_LIBRARIES} )
-      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${EXE_TARGET_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
+    # Build the target:
+    if(_orocos_executable_SOURCES)
+      # Use rosbuild in ros environments:
+      if (ORO_USE_ROSBUILD)
+        message( STATUS "[UseOrocos] Building executable ${target} in rosbuild source tree." )
+        rosbuild_add_executable(${target} ${_orocos_executable_SOURCES} )
+      else()
+        message( STATUS "[UseOrocos] Building executable ${target}" )
+        add_executable( ${target} ${_orocos_executable_SOURCES} )
       endif()
     endif()
 
-    # We install the exe, the user must make sure that the install dir is not
-    # beneath the ROS package (if any).
-    INSTALL(TARGETS ${EXE_TARGET_NAME} RUNTIME DESTINATION ${AC_INSTALL_RT_DIR})
+    # Check if the target exists:
+    if(NOT TARGET ${target})
+      message(FATAL_ERROR "[UseOrocos] Target '${target}' does not exist in orocos_executable().")
+    endif()
+
+    # Configure the target as an executable:
+    _orocos_target(${target} EXECUTABLE ${ARGN})
+
+    # Note: CMAKE_DEBUG_POSTFIX is only automatically applied to non-executable targets.
+    if(CMAKE_DEBUG_POSTFIX)
+      set_target_properties( ${target} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} )
+    endif(CMAKE_DEBUG_POSTFIX)
+
+    # Unset temporary variables
+    unset(_orocos_executable_SOURCES)
+    unset(_orocos_executable_INSTALL)
+    unset(_orocos_executable_SKIP_INSTALL)
+    unset(_orocos_executable_VERSION)
+
   endmacro( orocos_executable )
-
-  # Configure an executable to work with Orocos.
-  # The caller is responsible for any ADD_EXECUTABLE(), ADD_TEST(), or INSTALL()
-  # calls for this target.
-  # WARNING the target name is *not* suffixed with OROCOS_TARGET. That is left
-  # to the caller, if necessary.
-  #
-  # Usage: orocos_configure_executable( executablename src1 src2 src3 [INSTALL bin] )
-  #
-  macro( orocos_configure_executable EXE_TARGET_NAME )
-
-    ORO_PARSE_ARGUMENTS(ORO_EXECUTABLE
-      "INSTALL"
-      ""
-      ${ARGN}
-      )
-    SET( SOURCES ${ORO_EXECUTABLE_DEFAULT_ARGS} )
-    if ( ORO_EXECUTABLE_INSTALL )
-      set(AC_INSTALL_DIR ${ORO_EXECUTABLE_INSTALL})
-    else()
-      set(AC_INSTALL_DIR lib)
-    endif()
-
-    if (ORO_USE_ROSBUILD)
-      MESSAGE( STATUS "[UseOrocos] Configuring executable ${EXE_TARGET_NAME} in rosbuild source tree." )
-# TODO      rosbuild_add_executable(${EXE_TARGET_NAME} ${SOURCES} )
-    else()
-      MESSAGE( STATUS "[UseOrocos] Configuring executable ${EXE_TARGET_NAME}" )
-    endif()
-
-    SET_TARGET_PROPERTIES( ${EXE_TARGET_NAME} PROPERTIES
-      OUTPUT_NAME ${EXE_TARGET_NAME}
-      )
-
-    if(CMAKE_DEBUG_POSTFIX)
-      set_target_properties( ${EXE_TARGET_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} )
-    endif(CMAKE_DEBUG_POSTFIX)
-
-    orocos_add_include_directories( ${EXE_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags(${EXE_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
-    orocos_add_link_flags(${EXE_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
-    orocos_set_install_rpath( ${EXE_TARGET_NAME} ${USE_OROCOS_LIBRARY_DIRS})
-
-    TARGET_LINK_LIBRARIES( ${EXE_TARGET_NAME}
-      ${OROCOS-RTT_LIBRARIES}
-      )
-
-    # Only link in case there is something *and* the user didn't opt-out:
-    if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${EXE_TARGET_NAME} ${USE_OROCOS_LIBRARIES} )
-      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${EXE_TARGET_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
-      endif()
-    endif()
-  endmacro( orocos_configure_executable )
 
   # Type headers should add themselves by calling 'orocos_typegen_headers()'
   # They will be processed by typegen to generate a typekit from it, with the
@@ -535,218 +535,188 @@ macro( orocos_library LIB_TARGET_NAME )
   # will install this header into pkgname/include/robotdata.hpp ! Most likely
   # not what you want. So call this macro from the include dir itself.
   #
-  # Usage: orocos_typegen_headers( robotdata.hpp sensordata.hpp DEPENDS orocos_kdl )
+  # Usage: orocos_typegen_headers( robotdata.hpp sensordata.hpp DEPENDS orocos_kdl [VERSION x.y.z] [INSTALL custom/install/destination] [SKIP_INSTALL] )
   #
   macro( orocos_typegen_headers )
-    ORO_PARSE_ARGUMENTS(ORO_TYPEGEN_HEADERS
-      "DEPENDS"
+    cmake_parse_arguments(_orocos_typegen_headers
+      "SKIP_INSTALL"
+      "DEPENDS;INSTALL;VERSION"
       ""
       ${ARGN}
       )
 
-    if ( ORO_TYPEGEN_HEADERS_DEPENDS )
-      set (ORO_TYPEGEN_HEADERS_DEP_INFO_MSG "using: ${ORO_TYPEGEN_HEADERS_DEPENDS}")
+    set(_orocos_typegen_headers_HEADERS ${_orocos_typegen_headers_UNPARSED_ARGUMENTS} )
+
+    # Save ARGN for orocos_typekit() called from the typekit subdirectory:
+    set(_orocos_typegen_headers_ARGN ${ARGN})
+
+    if(_orocos_typegen_headers_DEPENDS)
+      set(_orocos_typegen_headers_DEP_INFO_MSG "using: ${_orocos_typegen_headers_DEPENDS}")
     endif()
-    MESSAGE( STATUS "[UseOrocos] Generating typekit for ${PROJECT_NAME} ${ORO_TYPEGEN_HEADERS_DEP_INFO_MSG}..." )
+    message(STATUS "[UseOrocos] Generating typekit for ${PROJECT_NAME} ${_orocos_typegen_headers_DEP_INFO_MSG}..." )
 
     # Works in top level source dir:
     set(TYPEGEN_EXE typegen-NOTFOUND) #re-check for typegen each time !
     find_program(TYPEGEN_EXE typegen)
-    if (NOT TYPEGEN_EXE)
+    if(NOT TYPEGEN_EXE)
       message(FATAL_ERROR "'typegen' not found in path. Can't build typekit. Did you 'source env.sh' ?")
-    else (NOT TYPEGEN_EXE)
+    endif()
 
-      foreach( IMP ${ORO_TYPEGEN_HEADERS_DEPENDS} )
-        set(ORO_TYPEGEN_HEADERS_IMPORTS  ${ORO_TYPEGEN_HEADERS_IMPORTS} -i${IMP} )
-      endforeach()
+    foreach(_imp ${_orocos_typegen_headers_DEPENDS})
+      set(_orocos_typegen_headers_IMPORTS  ${_orocos_typegen_headers_IMPORTS} -i${_imp})
+    endforeach()
 
-      # Working directory is necessary to be able to find the source files.
-      execute_process( COMMAND ${TYPEGEN_EXE} --output ${PROJECT_BINARY_DIR}/typekit ${ORO_TYPEGEN_HEADERS_IMPORTS} ${PROJECT_NAME} ${ORO_TYPEGEN_HEADERS_DEFAULT_ARGS} 
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} 
-        )
-      # work around generated manifest.xml file:
-      #execute_process( COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_SOURCE_DIR}/typekit/manifest.xml )
-      add_subdirectory(${PROJECT_BINARY_DIR}/typekit ${PROJECT_BINARY_DIR}/typekit)
+    # Working directory is necessary to be able to find the source files.
+    execute_process( COMMAND ${TYPEGEN_EXE} --output ${PROJECT_BINARY_DIR}/typekit ${_orocos_typegen_headers_IMPORTS} ${PROJECT_NAME} ${_orocos_typegen_headers_HEADERS}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    # work around generated manifest.xml file:
+    #execute_process( COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_SOURCE_DIR}/typekit/manifest.xml )
+    add_subdirectory(${PROJECT_BINARY_DIR}/typekit ${PROJECT_BINARY_DIR}/typekit)
 
-      list(APPEND OROCOS_DEFINED_TYPES " -l${PROJECT_NAME}-typekit-${OROCOS_TARGET}")
-      list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${PROJECT_NAME}-typekit")
-      list(APPEND ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS "${PROJECT_BINARY_DIR}/typekit")
-      list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types")
-    endif (NOT TYPEGEN_EXE)
+    get_target_property(_orocos_typegen_headers_OUTPUT_NAME ${PROJECT_NAME}-typekit OUTPUT_NAME)
+    list(APPEND OROCOS_DEFINED_TYPES " -l${_orocos_typegen_headers_OUTPUT_NAME}")
+    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${PROJECT_NAME}-typekit")
+    list(APPEND ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS "${PROJECT_BINARY_DIR}/typekit")
+    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types")
+
+    # Unset temporary variables
+    unset(_orocos_typegen_headers_HEADERS)
+    unset(_orocos_typegen_headers_ARGN)
+    unset(_orocos_typegen_headers_DEPENDS)
+    unset(_orocos_typegen_headers_INSTALL)
+    unset(_orocos_typegen_headers_SKIP_INSTALL)
+    unset(_orocos_typegen_headers_VERSION)
+    unset(_orocos_typegen_headers_OUTPUT_NAME)
+
   endmacro( orocos_typegen_headers )
 
   # typekit libraries should add themselves by calling 'orocos_typekit()' 
-  # instead of 'ADD_LIBRARY' in CMakeLists.txt.
+  # instead of 'add_library' in CMakeLists.txt.
   # You can set a variable COMPONENT_VERSION x.y.z to set a version or 
   # specify the optional VERSION parameter. For ros builds, the version
   # number is ignored.
   #
-  # Usage: orocos_typekit( typekitname src1 src2 src3 [INSTALL lib/orocos/project/types] [VERSION x.y.z] )
+  # Usage:
+  #   orocos_typekit( libraryname src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #      or
+  #   add_library( target SHARED src1 [src2 ...] )
+  #   orocos_typekit( target [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
   #
-  macro( orocos_typekit LIB_TARGET_NAME )
-
-    ORO_PARSE_ARGUMENTS(ORO_TYPEKIT
+  macro( orocos_typekit target )
+    cmake_parse_arguments(_orocos_typekit
+      "SKIP_INSTALL"
       "INSTALL;VERSION"
       ""
       ${ARGN}
       )
-    SET( SOURCES ${ORO_TYPEKIT_DEFAULT_ARGS} )
-    if ( ORO_TYPEKIT_INSTALL )
-      set(AC_INSTALL_DIR ${ORO_TYPEKIT_INSTALL})
-      set(AC_INSTALL_RT_DIR bin)
-    else()
-      set(AC_INSTALL_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types)
-      set(AC_INSTALL_RT_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/types)
-    endif()
-    if (COMPONENT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${COMPONENT_VERSION})
-    endif(COMPONENT_VERSION)
-    if (ORO_TYPEKIT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${ORO_TYPEKIT_VERSION})
-    endif(ORO_TYPEKIT_VERSION)
 
-    if ( ${OROCOS_TARGET} STREQUAL "gnulinux" OR ${OROCOS_TARGET} STREQUAL "lxrt" OR ${OROCOS_TARGET} STREQUAL "xenomai" OR ${OROCOS_TARGET} STREQUAL "win32" OR ${OROCOS_TARGET} STREQUAL "macosx")
-      set( LIB_NAME ${LIB_TARGET_NAME}-${OROCOS_TARGET})
-    else()
-      set( LIB_NAME ${LIB_TARGET_NAME})
-    endif()
+    set(_orocos_typekit_SOURCES ${_orocos_typekit_UNPARSED_ARGUMENTS} )
 
     # Clear the dependencies such that a target switch can be detected:
-    unset( ${LIB_TARGET_NAME}_LIB_DEPENDS )
+    unset( ${target}_LIB_DEPENDS )
 
-    MESSAGE( STATUS "[UseOrocos] Building typekit library ${LIB_TARGET_NAME}" )
-    if (ORO_USE_ROSBUILD)
-      rosbuild_add_library(${LIB_TARGET_NAME} ${SOURCES} )
-    else()
-      ADD_LIBRARY( ${LIB_TARGET_NAME} SHARED ${SOURCES} )
-    endif()
-    SET_TARGET_PROPERTIES( ${LIB_TARGET_NAME} PROPERTIES
-      OUTPUT_NAME ${LIB_NAME}
-      LIBRARY_OUTPUT_DIRECTORY ${ORO_TYPEKIT_OUTPUT_DIRECTORY}
-      ${LIB_COMPONENT_VERSION}
-      )
-
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
-    orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
-    orocos_set_install_rpath( ${LIB_TARGET_NAME} ${USE_OROCOS_LIBRARY_DIRS})
-
-    TARGET_LINK_LIBRARIES( ${LIB_TARGET_NAME}
-      ${OROCOS-RTT_LIBRARIES} 
-      )
-
-    # Only link in case there is something *and* the user didn't opt-out:
-    if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${LIB_TARGET_NAME} ${USE_OROCOS_LIBRARIES} )
-      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${LIB_TARGET_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
+    # Build the target:
+    if(_orocos_typekit_SOURCES)
+      # Use rosbuild in ros environments:
+      if (ORO_USE_ROSBUILD)
+        message( STATUS "[UseOrocos] Building typekit ${target} in library '${target}' in rosbuild source tree." )
+        rosbuild_add_library(${target} ${_orocos_typekit_SOURCES} )
+      else()
+        message( STATUS "[UseOrocos] Building typekit ${target} in library '${target}'" )
+        add_library( ${target} SHARED ${_orocos_typekit_SOURCES} )
       endif()
     endif()
 
-    # On win32, typekit runtime (.dll) should go in orocos/types folder
-    if( ${OROCOS_TARGET} STREQUAL "win32" )
-      INSTALL(TARGETS ${LIB_TARGET_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_DIR})
-    else()
-      INSTALL(TARGETS ${LIB_TARGET_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_RT_DIR})
+    # Check if the target exists:
+    if(NOT TARGET ${target})
+      message(FATAL_ERROR "[UseOrocos] Target '${target}' does not exist in orocos_typekit().")
     endif()
 
+    # Configure the target as a typekit library:
+    _orocos_target(${target} TYPEKIT ${_orocos_typegen_headers_ARGN} ${ARGN})
+
     # Necessary for .pc file generation
-    list(APPEND OROCOS_DEFINED_TYPES " -l${LIB_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${LIB_TARGET_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/${AC_INSTALL_DIR}")
+    get_target_property(_orocos_typekit_OUTPUT_NAME ${target} OUTPUT_NAME)
+    list(APPEND OROCOS_DEFINED_TYPES " -l${_orocos_typekit_OUTPUT_NAME}")
+
+    # Unset temporary variables
+    unset(_orocos_typekit_SOURCES)
+    unset(_orocos_typekit_INSTALL)
+    unset(_orocos_typekit_SKIP_INSTALL)
+    unset(_orocos_typekit_VERSION)
+    unset(_orocos_typekit_OUTPUT_NAME)
+
   endmacro( orocos_typekit )
 
   # plugin libraries should add themselves by calling 'orocos_plugin()' 
-  # instead of 'ADD_LIBRARY' in CMakeLists.txt.
+  # instead of 'add_library' in CMakeLists.txt.
   # You can set a variable COMPONENT_VERSION x.y.z to set a version or 
   # specify the optional VERSION parameter. For ros builds, the version
   # number is ignored.
   #
-  # Usage: orocos_plugin( pluginname src1 src2 src3 [INSTALL lib/orocos/project/plugins] [VERSION x.y.z])
+  # Usage:
+  #   orocos_plugin( pluginname src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #      or
+  #   add_library( target SHARED src1 [src2 ...] )
+  #   orocos_plugin( target [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
   #
-  macro( orocos_plugin LIB_TARGET_NAME )
-
-    ORO_PARSE_ARGUMENTS(ORO_PLUGIN
+  macro( orocos_plugin target )
+    cmake_parse_arguments(_orocos_plugin
+      "SKIP_INSTALL"
       "INSTALL;VERSION"
       ""
       ${ARGN}
       )
-    SET( SOURCES ${ORO_PLUGIN_DEFAULT_ARGS} )
-    if ( ORO_PLUGIN_INSTALL )
-      set(AC_INSTALL_DIR ${ORO_PLUGIN_INSTALL})
-      set(AC_INSTALL_RT_DIR bin)
-    else()
-      set(AC_INSTALL_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/plugins )
-      set(AC_INSTALL_RT_DIR lib/orocos${OROCOS_SUFFIX}/${PROJECT_NAME}/plugins )
-    endif()
-    if (COMPONENT_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${COMPONENT_VERSION})
-    endif(COMPONENT_VERSION)
-    if (ORO_PLUGIN_VERSION)
-      set( LIB_COMPONENT_VERSION VERSION ${ORO_PLUGIN_VERSION})
-    endif(ORO_PLUGIN_VERSION)
 
-    if ( ${OROCOS_TARGET} STREQUAL "gnulinux" OR ${OROCOS_TARGET} STREQUAL "lxrt" OR ${OROCOS_TARGET} STREQUAL "xenomai" OR ${OROCOS_TARGET} STREQUAL "win32" OR ${OROCOS_TARGET} STREQUAL "macosx")
-      set( LIB_NAME ${LIB_TARGET_NAME}-${OROCOS_TARGET})
-    else()
-      set( LIB_NAME ${LIB_TARGET_NAME})
-    endif()
+    set(_orocos_plugin_SOURCES ${_orocos_plugin_UNPARSED_ARGUMENTS} )
 
     # Clear the dependencies such that a target switch can be detected:
-    unset( ${LIB_TARGET_NAME}_LIB_DEPENDS )
+    unset( ${target}_LIB_DEPENDS )
 
-    if (ORO_USE_ROSBUILD)
-      MESSAGE( STATUS "[UseOrocos] Building plugin library ${LIB_TARGET_NAME} in rosbuild source tree." )
-      rosbuild_add_library(${LIB_TARGET_NAME} ${SOURCES} )
-    else()
-      MESSAGE( STATUS "[UseOrocos] Building plugin library ${LIB_TARGET_NAME}" )
-      ADD_LIBRARY( ${LIB_TARGET_NAME} SHARED ${SOURCES} )
-    endif()
-
-    SET_TARGET_PROPERTIES( ${LIB_TARGET_NAME} PROPERTIES
-      OUTPUT_NAME ${LIB_NAME}
-      LIBRARY_OUTPUT_DIRECTORY ${ORO_PLUGIN_OUTPUT_DIRECTORY}
-      ${LIB_COMPONENT_VERSION}
-      )
-
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRECTORIES})
-    orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
-    orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
-    orocos_set_install_rpath( ${LIB_TARGET_NAME} ${USE_OROCOS_LIBRARY_DIRS})
-
-    TARGET_LINK_LIBRARIES( ${LIB_TARGET_NAME} 
-      ${OROCOS-RTT_LIBRARIES}
-      #${OROCOS-RTT_TYPEKIT_LIBRARIES} 
-      )
-
-    # Only link in case there is something *and* the user didn't opt-out:
-    if(NOT OROCOS_NO_AUTO_LINKING AND USE_OROCOS_LIBRARIES)
-      target_link_libraries( ${LIB_TARGET_NAME} ${USE_OROCOS_LIBRARIES} )
-      if("$ENV{VERBOSE}" OR ORO_USE_VERBOSE)
-        message(STATUS "[UseOrocos] Linking target '${LIB_TARGET_NAME}' with libraries from packages '${USE_OROCOS_PACKAGES}'. To disable this, set OROCOS_NO_AUTO_LINKING to true.")
+    # Build the target:
+    if(_orocos_plugin_SOURCES)
+      # Use rosbuild in ros environments:
+      if (ORO_USE_ROSBUILD)
+        message( STATUS "[UseOrocos] Building plugin ${target} in library '${target}' in rosbuild source tree." )
+        rosbuild_add_library(${target} ${_orocos_plugin_SOURCES} )
+      else()
+        message( STATUS "[UseOrocos] Building plugin ${target} in library '${target}'" )
+        add_library( ${target} SHARED ${_orocos_plugin_SOURCES} )
       endif()
     endif()
 
-    # On win32, plugins runtime (.dll) should go in orocos/plugins folder
-    if( ${OROCOS_TARGET} STREQUAL "win32" )
-      INSTALL(TARGETS ${LIB_TARGET_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_DIR})
-    else()
-      INSTALL(TARGETS ${LIB_TARGET_NAME} LIBRARY DESTINATION ${AC_INSTALL_DIR} ARCHIVE DESTINATION lib RUNTIME DESTINATION ${AC_INSTALL_RT_DIR})
+    # Check if the target exists:
+    if(NOT TARGET ${target})
+      message(FATAL_ERROR "[UseOrocos] orocos_plugin() has been called without source file arguments and target '${target}' does not exist." )
     endif()
 
+    # Configure the target as a plugin library:
+    _orocos_target(${target} PLUGIN ${ARGN})
+
     # Necessary for .pc file generation
-    list(APPEND OROCOS_DEFINED_PLUGINS " -l${LIB_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS "${LIB_TARGET_NAME}")
-    list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/${AC_INSTALL_DIR}")
+    get_target_property(_orocos_plugin_OUTPUT_NAME ${target} OUTPUT_NAME)
+    list(APPEND OROCOS_DEFINED_PLUGINS " -l${_orocos_plugin_OUTPUT_NAME}")
+
+    # Unset temporary variables
+    unset(_orocos_plugin_SOURCES)
+    unset(_orocos_plugin_INSTALL)
+    unset(_orocos_plugin_SKIP_INSTALL)
+    unset(_orocos_plugin_VERSION)
+    unset(_orocos_plugin_OUTPUT_NAME)
+
   endmacro( orocos_plugin )
 
   # service libraries should add themselves by calling 'orocos_service()' 
-  # instead of 'ADD_LIBRARY' in CMakeLists.txt.
+  # instead of 'add_library' in CMakeLists.txt.
   #
-  # Usage: orocos_service( servicename src1 src2 src3 )
+  #   orocos_service( servicename src1 [src2 ...] [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
+  #      or
+  #   add_library( target SHARED src1 [src2 ...] )
+  #   orocos_service( target [INSTALL custom/install/destination] [SKIP_INSTALL] [VERSION x.y.z] )
   #
-  macro( orocos_service LIB_TARGET_NAME )
-    orocos_plugin( ${LIB_TARGET_NAME} ${ARGN} )
+  macro( orocos_service target )
+    orocos_plugin( ${target} ${ARGN} )
   endmacro( orocos_service )
 
   #
@@ -761,26 +731,26 @@ macro( orocos_library LIB_TARGET_NAME )
   #                )
   #
   macro( orocos_install_headers )
-    ORO_PARSE_ARGUMENTS(ORO_INSTALL_HEADER
-      "INSTALL;FILES;DIRECTORY"
+    cmake_parse_arguments(_orocos_install_headers
       ""
+      "INSTALL"
+      "FILES;DIRECTORY"
       ${ARGN}
       )
-    set( SOURCES ${ORO_INSTALL_HEADER_DEFAULT_ARGS} )
-    if ( ORO_INSTALL_HEADER_INSTALL )
-      set(AC_INSTALL_DIR ${ORO_INSTALL_HEADER_INSTALL})
+
+    set( _orocos_install_headers_FILES ${_orocos_install_headers_FILES} ${_orocos_install_headers_UNPARSED_ARGUMENTS} )
+    if ( _orocos_install_headers_INSTALL )
+      set(_orocos_install_headers_DESTINATION ${_orocos_install_headers_INSTALL})
     else()
-      set(AC_INSTALL_DIR include/orocos/${PROJECT_NAME} )
+      set(_orocos_install_headers_DESTINATION ${ORO_INCLUDE_DESTINATION} )
     endif()
 
-    install( FILES ${SOURCES} DESTINATION ${AC_INSTALL_DIR} )
-
-    if( ORO_INSTALL_HEADER_FILES )
-      install( FILES ${ORO_INSTALL_HEADER_FILES} DESTINATION ${AC_INSTALL_DIR} )
+    if( _orocos_install_headers_FILES )
+      install( FILES ${_orocos_install_headers_FILES} DESTINATION ${_orocos_install_headers_DESTINATION} )
     endif()
 
-    if( ORO_INSTALL_HEADER_DIRECTORY )
-      install( DIRECTORY ${ORO_INSTALL_HEADER_DIRECTORY} DESTINATION ${AC_INSTALL_DIR} )
+    if( _orocos_install_headers_DIRECTORY )
+      install( DIRECTORY ${_orocos_install_headers_DIRECTORY} DESTINATION ${_orocos_install_headers_DESTINATION} )
     endif()
 
   endmacro( orocos_install_headers )
@@ -826,32 +796,33 @@ macro( orocos_library LIB_TARGET_NAME )
   #
   macro( orocos_generate_package )
 
-    oro_parse_arguments(ORO_CREATE_PC
-      "VERSION;DEPENDS;DEPENDS_TARGETS;INCLUDE_DIRS"
+    cmake_parse_arguments(_orocos_generate_package
       ""
+      "VERSION"
+      "DEPENDS;DEPENDS_TARGETS;INCLUDE_DIRS"
       ${ARGN}
       )
 
     # Check version
-    if (NOT ORO_CREATE_PC_VERSION)
+    if (NOT _orocos_generate_package_VERSION)
       if (COMPONENT_VERSION)
-        set( ORO_CREATE_PC_VERSION ${COMPONENT_VERSION})
-        message(STATUS "[UseOrocos] Generating package version ${ORO_CREATE_PC_VERSION} from COMPONENT_VERSION.")
+        set( _orocos_generate_package_VERSION ${COMPONENT_VERSION})
+        message(STATUS "[UseOrocos] Generating package version ${_orocos_generate_package_VERSION} from COMPONENT_VERSION.")
       elseif (${PROJECT_NAME}_VERSION)
-        set( ORO_CREATE_PC_VERSION ${${PROJECT_NAME}_VERSION})
-        message(STATUS "[UseOrocos] Generating package version ${ORO_CREATE_PC_VERSION} from ${PROJECT_NAME}_VERSION (package.xml).")
+        set( _orocos_generate_package_VERSION ${${PROJECT_NAME}_VERSION})
+        message(STATUS "[UseOrocos] Generating package version ${_orocos_generate_package_VERSION} from ${PROJECT_NAME}_VERSION (package.xml).")
       else ()
-        set( ORO_CREATE_PC_VERSION "1.0")
-        message(STATUS "[UseOrocos] Generating package version ${ORO_CREATE_PC_VERSION} (default version).")
+        set( _orocos_generate_package_VERSION "1.0")
+        message(STATUS "[UseOrocos] Generating package version ${_orocos_generate_package_VERSION} (default version).")
       endif (COMPONENT_VERSION)
-    else (NOT ORO_CREATE_PC_VERSION)
-      message(STATUS "[UseOrocos] Generating package version ${ORO_CREATE_PC_VERSION}.")
-    endif (NOT ORO_CREATE_PC_VERSION)
+    else (NOT _orocos_generate_package_VERSION)
+      message(STATUS "[UseOrocos] Generating package version ${_orocos_generate_package_VERSION}.")
+    endif (NOT _orocos_generate_package_VERSION)
 
     # Create filename
-    if ( ORO_CREATE_PC_DEFAULT_ARGS )
-      set(PC_NAME ${ORO_CREATE_PC_DEFAULT_ARGS})
-    else ( ORO_CREATE_PC_DEFAULT_ARGS )
+    if ( _orocos_generate_package_UNPARSED_ARGUMENTS )
+      set(PC_NAME ${_orocos_generate_package_UNPARSED_ARGUMENTS})
+    else ( _orocos_generate_package_UNPARSED_ARGUMENTS )
       set(PACKAGE_NAME ${PROJECT_NAME} )
       if ( NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL ${PROJECT_NAME}_SOURCE_DIR )
         # Append -subdir-subdir-... to pc name:
@@ -860,11 +831,11 @@ macro( orocos_library LIB_TARGET_NAME )
         set(PACKAGE_NAME ${PACKAGE_NAME}-${PC_NAME_SUFFIX})
       endif ( NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL ${PROJECT_NAME}_SOURCE_DIR )
       set(PC_NAME ${PACKAGE_NAME}-${OROCOS_TARGET})
-    endif ( ORO_CREATE_PC_DEFAULT_ARGS )
+    endif ( _orocos_generate_package_UNPARSED_ARGUMENTS )
 
     # Create dependency list
-    set(PC_DEPENDS ${ORO_CREATE_PC_DEPENDS})
-    foreach( DEP ${ORO_CREATE_PC_DEPENDS_TARGETS})
+    set(PC_DEPENDS ${_orocos_generate_package_DEPENDS})
+    foreach( DEP ${_orocos_generate_package_DEPENDS_TARGETS})
       list(APPEND PC_DEPENDS ${DEP}-${OROCOS_TARGET})
     endforeach()
     string(REPLACE ";" " " PC_DEPENDS "${PC_DEPENDS}")
@@ -899,7 +870,7 @@ orocos_libdir=\@PC_LIB_DIR\@
 Name: \@PC_NAME\@
 Description: \@PC_NAME\@ package for Orocos
 Requires: orocos-rtt-\@OROCOS_TARGET\@ \@PC_DEPENDS@
-Version: \@ORO_CREATE_PC_VERSION\@
+Version: \@_orocos_generate_package_VERSION\@
 \@PC_LIBS\@
 Cflags: -I\${includedir} \@PC_EXTRA_INCLUDE_DIRS\@
 ")
@@ -910,9 +881,9 @@ Cflags: -I\${includedir} \@PC_EXTRA_INCLUDE_DIRS\@
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PC_NAME}.pc DESTINATION lib/pkgconfig )
     #install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/manifest.xml DESTINATION  lib/orocos${OROCOS_SUFFIX}/level0 )
 
-    # Add ORO_CREATE_PC_INCLUDE_DIRS arguments to ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS
-    if(ORO_CREATE_PC_INCLUDE_DIRS)
-      foreach(include_dir ${ORO_CREATE_PC_INCLUDE_DIRS})
+    # Add _orocos_generate_package_INCLUDE_DIRS arguments to ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS
+    if(_orocos_generate_package_INCLUDE_DIRS)
+      foreach(include_dir ${_orocos_generate_package_INCLUDE_DIRS})
         if(IS_ABSOLUTE ${include_dir})
           list(APPEND ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS "${include_dir}")
         else()
@@ -974,7 +945,7 @@ Cflags: -I\${includedir} \@PC_EXTRA_INCLUDE_DIRS\@
 
     # Append exported targets, libraries and include directories of all dependencies
     set(${PROJECT_NAME}_EXPORTED_LIBRARIES ${${PROJECT_NAME}_EXPORTED_TARGETS})
-    foreach(_depend ${ORO_CREATE_PC_DEPENDS} ${ORO_CREATE_PC_DEPENDS_TARGETS})
+    foreach(_depend ${_orocos_generate_package_DEPENDS} ${_orocos_generate_package_DEPENDS_TARGETS})
       list(APPEND ${PROJECT_NAME}_EXPORTED_TARGETS      ${${_depend}_EXPORTED_TARGETS})
       list(APPEND ${PROJECT_NAME}_EXPORTED_LIBRARIES    ${${_depend}_LIBRARIES})
       list(APPEND ${PROJECT_NAME}_EXPORTED_INCLUDE_DIRS ${${_depend}_INCLUDE_DIRS})
@@ -1022,7 +993,7 @@ Cflags: -I\${includedir} \@PC_EXTRA_INCLUDE_DIRS\@
     # Call catkin_package() here if the user has not called it before.
     if( ORO_USE_CATKIN
         AND NOT ${PROJECT_NAME}_CATKIN_PACKAGE
-        AND NOT ORO_CREATE_PC_DEFAULT_ARGS # no package name given in orocos_generate_package()
+        AND NOT _orocos_generate_package_UNPARSED_ARGUMENTS # no package name given in orocos_generate_package()
         AND CMAKE_CURRENT_SOURCE_DIR STREQUAL ${PROJECT_NAME}_SOURCE_DIR
         AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" )
 
