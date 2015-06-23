@@ -45,6 +45,7 @@
 
 #include "MutexLock.hpp"
 #include "oro_malloc.h"
+#include "oro_allocator_memcheck.hpp"
 
 namespace RTT { namespace os {
     /**
@@ -272,10 +273,18 @@ namespace RTT { namespace os {
             void* p = oro_rt_malloc(n * sizeof(T));
             if (!p)
                 throw std::bad_alloc();
+#ifdef OS_RT_MALLOC_MEMCHECK
+            oro_allocator_memcheck_allocate(p, n * sizeof(T));
+#endif
             return static_cast<pointer>(p);
         }
 
-        void deallocate(pointer p, size_type) {
+        void deallocate(pointer p, size_type n) {
+#ifdef OS_RT_MALLOC_MEMCHECK
+            oro_allocator_memcheck_deallocate(p, n * sizeof(T));
+#else
+            (void) n;
+#endif
             oro_rt_free(p);
         }
 

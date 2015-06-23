@@ -25,6 +25,7 @@
 #cmakedefine OS_HAVE_STREAMS
 #cmakedefine OS_THREAD_SCOPE
 #cmakedefine OS_RT_MALLOC
+#cmakedefine OS_RT_MALLOC_MEMCHECK
 #ifdef OS_THREAD_SCOPE
 #define OROPKG_OS_THREAD_SCOPE
 #endif
