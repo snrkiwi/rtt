@@ -1,5 +1,7 @@
-FILE( GLOB CPPS [^.]*.cpp [^.]*.c)
-FILE( GLOB HPPS [^.]*.hpp [^.]*.h [^.]*.inl)
+#FILE( GLOB CPPS [^.]*.cpp [^.]*.c)
+#FILE( GLOB HPPS [^.]*.hpp [^.]*.h [^.]*.inl)
+SET(CPPS os/TimeService.cpp)
+SET(HPPS TimeService.hpp)
 
 GLOBAL_ADD_INCLUDE( rtt/os ${HPPS} )
 GLOBAL_ADD_SRC( ${CPPS})

@@ -147,8 +147,10 @@ OPTION(ORO_SIGNALLING_PORTS "Enable the signal callback mechanism on ports. Enab
 ### Subdirs must append srcs inhere.
 SET(ENV{GLOBAL_LIBRARY_SRCS})
 
-FILE( GLOB CPPS [^.]*.cpp )
-FILE( GLOB HPPS [^.]*.hpp [^.]*.h [^.]*.inl)
+#FILE( GLOB CPPS [^.]*.cpp )
+#FILE( GLOB HPPS [^.]*.hpp [^.]*.h [^.]*.inl)
+SET(CPPS Logger.cpp)
+SET(HPPS Logger.hpp)
 
 GLOBAL_ADD_INCLUDE( rtt ${HPPS})
 GLOBAL_ADD_INCLUDE( rtt ${CMAKE_CURRENT_BINARY_DIR}/rtt-config.h)
@@ -161,17 +163,17 @@ IF (OS_RT_MALLOC )
 ENDIF (OS_RT_MALLOC )
 
 ADD_SUBDIRECTORY( os )
-ADD_SUBDIRECTORY( base )
-ADD_SUBDIRECTORY( internal )
-ADD_SUBDIRECTORY( types )
-ADD_SUBDIRECTORY( typekit )
-ADD_SUBDIRECTORY( transports/corba )
-ADD_SUBDIRECTORY( transports/mqueue )
-ADD_SUBDIRECTORY( scripting )
-ADD_SUBDIRECTORY( marsh )
-ADD_SUBDIRECTORY( plugin )
-ADD_SUBDIRECTORY( deployment )
-ADD_SUBDIRECTORY( extras )
+#ADD_SUBDIRECTORY( base )
+#ADD_SUBDIRECTORY( internal )
+#ADD_SUBDIRECTORY( types )
+#ADD_SUBDIRECTORY( typekit )
+#ADD_SUBDIRECTORY( transports/corba )
+#ADD_SUBDIRECTORY( transports/mqueue )
+#ADD_SUBDIRECTORY( scripting )
+#ADD_SUBDIRECTORY( marsh )
+#ADD_SUBDIRECTORY( plugin )
+#ADD_SUBDIRECTORY( deployment )
+#ADD_SUBDIRECTORY( extras )
 
 ####
 #   Build Libraries:
