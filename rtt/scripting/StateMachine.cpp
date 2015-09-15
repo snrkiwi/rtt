@@ -1024,11 +1024,11 @@ namespace RTT {
         TRACE("executePreCheck..." );
         // first try to finish the current entry program (this only happens if entry was not atomically implemented, ie yielding):
         if ( currentEntry ) {
-            TRACE("Executing entry program of '"+ current->getName() +"'" );
+            TRACE("Executing entry program of '"+ (current ? current->getName() : "(null)") +"'" );
             if ( this->executeProgram(currentEntry, stepping) == false )
                 return false;
             // done.
-            TRACE("Finished  entry program of '"+ current->getName() +"'" );
+            TRACE("Finished  entry program of '"+ (current ? current->getName() : "(null)") +"'" );
             // in stepping mode, delay 'true' one executePending().
             if ( stepping ) {
                 currentProg = currentRun;
@@ -1076,7 +1076,7 @@ namespace RTT {
 
         // last is exit
         if ( currentExit ) {
-            TRACE("Executing exit program from '"+ current->getName() + "' (going to '"+ (next ? next->getName() : "(null)") +"')" );
+            TRACE("Executing exit program from '"+ (current ? current->getName() : "(null)") + "' (going to '"+ (next ? next->getName() : "(null)") +"')" );
             if ( this->executeProgram(currentExit, stepping) == false )
                 return false;
             // done.
@@ -1118,7 +1118,7 @@ namespace RTT {
 
         // finally, execute the current Entry of the new state:
         if ( currentEntry ) {
-            TRACE("Executing entry program of '"+ current->getName() +"'" );
+            TRACE("Executing entry program of '"+ (current ? current->getName() : "(null)") +"'" );
             if ( this->executeProgram(currentEntry, stepping) == false )
                 return false;
             // done.
@@ -1136,7 +1136,7 @@ namespace RTT {
 
         // Handle is executed after the transitions failed.
         if ( currentHandle ) {
-            TRACE("Executing handle program of '"+ current->getName() +"'" );
+            TRACE("Executing handle program of '"+ (current ? current->getName() : "(null)") +"'" );
             if ( this->executeProgram(currentHandle, stepping) == false )
                 return false;
             // done.
