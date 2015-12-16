@@ -74,6 +74,7 @@ namespace RTT
     ExecutionEngine::ExecutionEngine( TaskCore* owner )
         : taskc(owner),
           mqueue(new MWSRQueue<DisposableInterface*>(ORONUM_EE_MQUEUE_SIZE) ),
+          port_queue(new MWSRQueue<PortInterface*>(ORONUM_EE_MQUEUE_SIZE) ),
           f_queue( new MWSRQueue<ExecutableInterface*>(ORONUM_EE_MQUEUE_SIZE) ),
           mmaster(0)
     {
@@ -92,6 +93,7 @@ namespace RTT
             dis->dispose();
 
         delete f_queue;
+        delete port_queue;
         delete mqueue;
     }
 
@@ -230,6 +232,24 @@ namespace RTT
         msg_cond.broadcast(); // required for waitForMessages() (3rd party thread)
     }
 
+    void ExecutionEngine::processPortCallbacks()
+    {
+        // Fast bail-out :
+        if (port_queue->isEmpty())
+            return;
+
+        TaskContext* tc = dynamic_cast<TaskContext*>(taskc);
+        if (tc) {
+            PortInterface* port(0);
+            {
+                while ( port_queue->dequeue(port) ) {
+                    assert( port );
+                    tc->dataOnPortCallback(port);
+                }
+            }
+        }
+    }
+
     bool ExecutionEngine::process( DisposableInterface* c )
     {
         // forward message to master ExecutionEngine if available
@@ -248,6 +268,20 @@ namespace RTT
                 os::MutexLock lock(msg_lock);
                 msg_cond.broadcast(); // required for waitAndProcessMessages() (EE thread)
             }
+            return result;
+        }
+        return false;
+    }
+
+    bool ExecutionEngine::process( PortInterface* port )
+    {
+        if ( port && this->getActivity() ) {
+            // We only reject running port callbacks when we're in the FatalError state.
+            if (taskc && taskc->mTaskState == TaskCore::FatalError )
+                return false;
+
+            bool result = port_queue->enqueue( port );
+            this->getActivity()->trigger();
             return result;
         }
         return false;
@@ -366,15 +400,11 @@ namespace RTT
         if (reason == RunnableInterface::Trigger) {
             /* Callback step */
             processMessages();
-            if ( taskc ) {
-                taskc->prepareUpdateHook();
-            }
+            processPortCallbacks();
         } else if (reason == RunnableInterface::TimeOut || reason == RunnableInterface::IOReady) {
             /* Update step */
             processMessages();
-            if ( taskc ) {
-                taskc->prepareUpdateHook();
-            }
+            processPortCallbacks();
             processFunctions();
             processHooks();
         }
