@@ -335,13 +335,8 @@ namespace RTT {
                     const_ref_data_source.ref();
                     CORBA::Any_var ret = transport.createAny(&const_ref_data_source);
 
-                    if (mandatory) {
-                        CWriteStatus cfs = remote_side->write(ret);
-                        return (WriteStatus)cfs;
-                    } else {
-                        remote_side->writeOneway(ret);
-                        return WriteSuccess;
-                    }
+                    remote_side->write(ret);
+                    return WriteSuccess;
                 }
 #ifdef CORBA_IS_OMNIORB
                 catch(CORBA::SystemException& e)
@@ -360,25 +355,14 @@ namespace RTT {
             /**
              * CORBA IDL function.
              */
-            void writeOneway(const ::CORBA::Any& sample) ACE_THROW_SPEC ((
-          	      CORBA::SystemException
-          	    ))
-            {
-                typename internal::ValueDataSource<T> value_data_source;
-                value_data_source.ref();
-                transport.updateFromAny(&sample, &value_data_source);
-                base::ChannelElement<T>::write(value_data_source.rvalue());
-            }
-
-            CWriteStatus write(const ::CORBA::Any& sample) ACE_THROW_SPEC ((
+            void write(const ::CORBA::Any& sample) ACE_THROW_SPEC ((
                     CORBA::SystemException
                   ))
             {
                 typename internal::ValueDataSource<T> value_data_source;
                 value_data_source.ref();
                 transport.updateFromAny(&sample, &value_data_source);
-                WriteStatus fs = base::ChannelElement<T>::write(value_data_source.rvalue());
-                return (CWriteStatus)fs;
+                base::ChannelElement<T>::write(value_data_source.rvalue());
             }
 
             virtual WriteStatus data_sample(typename base::ChannelElement<T>::param_t sample)
