@@ -60,9 +60,6 @@ OutputPortInterface::~OutputPortInterface()
 bool OutputPortInterface::connected() const
 { return cmanager.connected(); }
 
-bool OutputPortInterface::connectedTo(PortInterface* port)
-{ return cmanager.connectedTo(port); }
-
 bool OutputPortInterface::disconnect(PortInterface* port)
 {
     return cmanager.disconnect(port);

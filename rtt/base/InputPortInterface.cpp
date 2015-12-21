@@ -120,11 +120,6 @@ FlowStatus InputPortInterface::read(DataSourceBase::shared_ptr source, bool copy
 bool InputPortInterface::connected() const
 { return cmanager.connected(); }
 
-bool InputPortInterface::connectedTo(PortInterface* port)
-{
-    return cmanager.connectedTo(port);
-}
-
 void InputPortInterface::disconnect()
 {
     cmanager.disconnect();

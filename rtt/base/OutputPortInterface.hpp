@@ -98,10 +98,6 @@ namespace RTT
          */
         virtual bool connected() const;
 
-        /** Returns true if this port is connected to the given port
-         */
-        virtual bool connectedTo(PortInterface* port);
-
         /**
          * Write this port using the value stored in source.
          */

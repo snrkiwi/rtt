@@ -119,9 +119,6 @@ namespace RTT
         /** Returns true if this port is connected */
         virtual bool connected() const;
 
-        /** Returns true if this port is connected to the given port*/
-        virtual bool connectedTo(PortInterface* port);
-
 #ifdef ORO_SIGNALLING_PORTS
         /** Returns the event object that gets emitted when new data is
          * available for this port. It gets deleted when the port is deleted.
