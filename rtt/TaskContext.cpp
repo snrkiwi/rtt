@@ -69,25 +69,11 @@ namespace RTT
 
     TaskContext::TaskContext(const std::string& name, TaskState initial_state /*= Stopped*/)
         :  TaskCore( initial_state)
-           ,portqueue( new MWSRQueue<PortInterface*>(64) )
            ,tcservice(new Service(name,this) ), tcrequests( new ServiceRequester(name,this) )
 #if defined(ORO_ACT_DEFAULT_SEQUENTIAL)
            ,our_act( new SequentialActivity( this->engine() ) )
 #elif defined(ORO_ACT_DEFAULT_ACTIVITY)
            ,our_act( new Activity( this->engine(), name ) )
-#endif
-    {
-        this->setup();
-    }
-
-    TaskContext::TaskContext(const std::string& name, ExecutionEngine* parent, TaskState initial_state /*= Stopped*/ )
-        :  TaskCore(parent, initial_state)
-           ,portqueue( new MWSRQueue<PortInterface*>(64) )
-           ,tcservice(new Service(name,this) ), tcrequests( new ServiceRequester(name,this) )
-#if defined(ORO_ACT_DEFAULT_SEQUENTIAL)
-           ,our_act( parent ? 0 : new SequentialActivity( this->engine() ) )
-#elif defined(ORO_ACT_DEFAULT_ACTIVITY)
-           ,our_act( parent ? 0 : new Activity( this->engine(), name ) )
 #endif
     {
         this->setup();
@@ -138,9 +124,11 @@ namespace RTT
             // here would only lead to calling invalid virtual functions.
             // [Rule no 1: Don't call virtual functions in a destructor.]
             // [Rule no 2: Don't call virtual functions in a constructor.]
-            tcservice->clear();
 
-            tcrequests->clear();
+            // these need to be freed before we cleanup the EE:
+            localservs.clear();
+            tcservice.reset();
+            tcrequests.reset();
 
             // remove from all users.
             while( !musers.empty() ) {
@@ -153,8 +141,6 @@ namespace RTT
                 _task_map.erase( _task_map.begin() );
             }
             // Do not call this->disconnect() !!!
-            // Ports are probably already destructed by user code.
-            delete portqueue;
         }
 
     bool TaskContext::connectPorts( TaskContext* peer )
@@ -360,6 +346,7 @@ namespace RTT
         new_act->stop();
         if(our_act){
             our_act->stop();
+            our_act.reset();
         }
         new_act->run( this->engine() );
         our_act = ActivityInterface::shared_ptr( new_act );
@@ -431,8 +418,7 @@ namespace RTT
     void TaskContext::dataOnPort(PortInterface* port)
     {
         if ( this->dataOnPortHook(port) ) {
-            portqueue->enqueue( port );
-            this->getActivity()->trigger();
+            engine()->process(&user_callbacks[port]);
         }
     }
 
@@ -443,7 +429,7 @@ namespace RTT
     void TaskContext::dataOnPortCallback(InputPortInterface* port, TaskContext::SlotFunction callback) {
         // user_callbacks will only be emitted from updateHook().
         MutexLock lock(mportlock);
-        user_callbacks[port] = callback;
+        user_callbacks[port].msf = boost::bind(callback,port);
     }
 
     void TaskContext::dataOnPortRemoved(PortInterface* port) {
@@ -451,19 +437,6 @@ namespace RTT
         UserCallbacks::iterator it = user_callbacks.find(port);
         if (it != user_callbacks.end() ) {
             user_callbacks.erase(it);
-        }
-    }
-
-    void TaskContext::prepareUpdateHook()
-    {
-        if ( portqueue->isEmpty() )
-            return;
-        MutexLock lock(mportlock);
-        PortInterface* port = 0;
-        while ( portqueue->dequeue( port ) == true ) {
-            UserCallbacks::iterator it = user_callbacks.find(port);
-            if (it != user_callbacks.end() )
-                it->second(port); // fire the user callback
         }
     }
 }
