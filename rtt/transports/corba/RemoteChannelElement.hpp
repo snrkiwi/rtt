@@ -122,8 +122,8 @@ namespace RTT {
              * CORBA IDL function.
              */
             void remoteSignal() ACE_THROW_SPEC ((
-          	      CORBA::SystemException
-          	    ))
+                    CORBA::SystemException
+                  ))
             { base::ChannelElement<T>::signal(); }
 
             bool signal()
@@ -166,7 +166,9 @@ namespace RTT {
                         valid = false;
                     }
                 } else {
-                    typename base::ChannelElement<T>::value_t sample; // Not RT.
+                    /** This is used on to read the channel */
+                    typename base::ChannelElement<T>::value_t sample;
+
                     //log(Debug) <<"...read..."<<endlog();
                     while ( this->read(sample, false) == NewData && valid) {
                         //log(Debug) <<"...write..."<<endlog();
@@ -295,8 +297,8 @@ namespace RTT {
              * CORBA IDL function.
              */
             CFlowStatus read(::CORBA::Any_out sample, bool copy_old_data) ACE_THROW_SPEC ((
-          	      CORBA::SystemException
-          	    ))
+                    CORBA::SystemException
+                  ))
             {
 
                 FlowStatus fs;
@@ -334,14 +336,19 @@ namespace RTT {
                 assert( remote_side.in() != 0 && "Got write() without remote side. Need buffer OR remote side but neither was present.");
                 try
                 {
+                      /** This is used on the writing side, to avoid allocating an Any for
+                       * each write
+                       */
+                    CORBA::Any write_any;
+                    internal::LateConstReferenceDataSource<T> const_ref_data_source(&sample);
+                    const_ref_data_source.ref();
+
                     // There is a trick. We allocate on the stack, but need to
                     // provide shared pointers. Manually increment refence count
                     // (the stack "owns" the object)
-                    internal::LateConstReferenceDataSource<T> const_ref_data_source(&sample);
-                    const_ref_data_source.ref();
-                    CORBA::Any_var ret = transport.createAny(&const_ref_data_source);
+                    transport.updateAny(&const_ref_data_source, write_any);
 
-                    remote_side->write(ret);
+                    remote_side->write(write_any);
                     return WriteSuccess;
                 }
 #ifdef CORBA_IS_OMNIORB
