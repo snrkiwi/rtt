@@ -473,7 +473,6 @@ namespace RTT {
                         smStatus = Status::error;
 
                 }
-                next = newState;
                 currentTrans = transProg;
 
                 next = newState;
@@ -1021,7 +1020,6 @@ namespace RTT {
         if ( inError() )
             return false;
 
-        TRACE("executePreCheck..." );
         // first try to finish the current entry program (this only happens if entry was not atomically implemented, ie yielding):
         if ( currentEntry ) {
             TRACE("Executing entry program of '"+ (current ? current->getName() : "(null)") +"'" );

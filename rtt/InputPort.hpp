@@ -112,8 +112,8 @@ namespace RTT
         /** Read all new samples that are available on this port, and returns
          * the last one.
          *
-         * Returns RTT::NewSample if at least one new sample was available, and
-         * either RTT::OldSample or RTT::NoSample otherwise.
+         * Returns RTT::NewData if at least one new sample was available, and
+         * either RTT::OldData or RTT::NoData otherwise.
          */
         FlowStatus readNewest(base::DataSourceBase::shared_ptr source, bool copy_old_data = true)
         {
@@ -150,8 +150,8 @@ namespace RTT
         /** Read all new samples that are available on this port, and returns
          * the last one.
          *
-         * Returns RTT::NewSample if at least one new sample was available, and
-         * either RTT::OldSample or RTT::NoSample otherwise.
+         * Returns RTT::NewData if at least one new sample was available, and
+         * either RTT::OldData or RTT::NoData otherwise.
          */
         FlowStatus readNewest(typename base::ChannelElement<T>::reference_t sample, bool copy_old_data = true)
         {
