@@ -1020,6 +1020,7 @@ namespace RTT {
         if ( inError() )
             return false;
 
+//        TRACE("executePreCheck..." );
         // first try to finish the current entry program (this only happens if entry was not atomically implemented, ie yielding):
         if ( currentEntry ) {
             TRACE("Executing entry program of '"+ (current ? current->getName() : "(null)") +"'" );
@@ -1052,7 +1053,7 @@ namespace RTT {
         if ( inError() )
             return false;
 
-        TRACE("executePostCheck..." );
+//        TRACE("executePostCheck..." );
         // if a transition has been scheduled, proceed directly instead of doing a run:
         if ( currentTrans ) {
             TRACE("Executing transition program from '"+ (current ? current->getName() : "(null)") + "' to '"+ ( next ? next->getName() : "(null)")+"'" );
