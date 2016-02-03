@@ -15,13 +15,8 @@ cmake_minimum_required(VERSION 2.8.3)
 if(OROCOS-RTT_FOUND AND NOT USE_OROCOS_RTT)
   include(FindPkgConfig)
   include(${OROCOS-RTT_USE_FILE_PATH}/UseOROCOS-RTT-helpers.cmake)
-
-  # CMake 2.8.8 added support for per-target INCLUDE_DIRECTORIES. The include directories will only be added to targets created
-  # with the orocos_*() macros. For older versions we have to set INCLUDE_DIRECTORIES per-directory.
-  # See https://github.com/orocos-toolchain/rtt/pull/85 for details.
-  if(CMAKE_VERSION VERSION_LESS 2.8.8)
-    include_directories(${OROCOS-RTT_INCLUDE_DIRS})
-  endif()
+  # Include directories
+  include_directories(${OROCOS-RTT_INCLUDE_DIRS})
 
   # Preprocessor definitions
   add_definitions(${OROCOS-RTT_DEFINITIONS})
@@ -312,7 +307,6 @@ if(OROCOS-RTT_FOUND AND NOT USE_OROCOS_RTT)
       endif()
     endif()
 
-    orocos_add_include_directories( ${COMPONENT_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags( ${COMPONENT_NAME} ${USE_OROCOS_CFLAGS_OTHER})
     orocos_add_link_flags( ${COMPONENT_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
 
@@ -408,7 +402,6 @@ macro( orocos_library LIB_TARGET_NAME )
       endif()
     endif()
 
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER} )
     orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER} )
 
@@ -488,7 +481,6 @@ macro( orocos_library LIB_TARGET_NAME )
       set_target_properties( ${EXE_TARGET_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} )
     endif(CMAKE_DEBUG_POSTFIX)
 
-    orocos_add_include_directories( ${EXE_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags(${EXE_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
     orocos_add_link_flags(${EXE_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
 
@@ -559,7 +551,6 @@ macro( orocos_library LIB_TARGET_NAME )
       set_target_properties( ${EXE_TARGET_NAME} PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX} )
     endif(CMAKE_DEBUG_POSTFIX)
 
-    orocos_add_include_directories( ${EXE_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags(${EXE_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
     orocos_add_link_flags(${EXE_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
 
@@ -692,7 +683,6 @@ macro( orocos_library LIB_TARGET_NAME )
       endif()
     endif()
 
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
     orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
 
@@ -786,7 +776,6 @@ macro( orocos_library LIB_TARGET_NAME )
       endif()
     endif()
 
-    orocos_add_include_directories( ${LIB_TARGET_NAME} ${OROCOS-RTT_INCLUDE_DIRS} ${USE_OROCOS_INCLUDE_DIRS})
     orocos_add_compile_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_CFLAGS_OTHER})
     orocos_add_link_flags( ${LIB_TARGET_NAME} ${USE_OROCOS_LDFLAGS_OTHER})
 
