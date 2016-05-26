@@ -422,6 +422,7 @@ macro(orocos_set_install_rpath target)
   endif()
 
   set_target_properties(${target} PROPERTIES
+                        INSTALL_RPATH_USE_LINK_PATH 1
                         INSTALL_RPATH "${_install_rpath}")
 
   if(APPLE)
