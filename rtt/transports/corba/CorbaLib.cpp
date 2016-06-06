@@ -115,11 +115,10 @@ namespace RTT {
 
             virtual base::ChannelElementBase* buildDataStorage(ConnPolicy const& policy) const { return 0; }
 
-            virtual CRemoteChannelElement_i* createChannelElement_i(DataFlowInterface*, ::PortableServer::POA* poa, bool, bool, bool) const {
+            virtual CRemoteChannelElement_i* createChannelElement_i(DataFlowInterface*, ::PortableServer::POA* poa, const ConnPolicy &) const {
                 Logger::In in("CorbaFallBackProtocol");
                 log(Error) << "Could create Channel : data type not known to CORBA Transport." <<Logger::endl;
                 return 0;
-
             }
 
             virtual base::ChannelElementBase* buildChannelOutput(base::InputPortInterface& port,
@@ -160,6 +159,10 @@ namespace RTT {
                 return ti->addProtocol(ORO_CORBA_PROTOCOL_ID, new CorbaTemplateProtocol<float>() );
             if ( name == "uint" )
                 return ti->addProtocol(ORO_CORBA_PROTOCOL_ID, new CorbaTemplateProtocol<unsigned int>() );
+            if ( name == "llong" )
+                return ti->addProtocol(ORO_CORBA_PROTOCOL_ID, new CorbaTemplateProtocol<long long>() );
+            if ( name == "ullong" )
+                return ti->addProtocol(ORO_CORBA_PROTOCOL_ID, new CorbaTemplateProtocol<unsigned long long>() );
             if ( name == "char" )
                 return ti->addProtocol(ORO_CORBA_PROTOCOL_ID, new CorbaTemplateProtocol<char>() );
             //if ( name == "long" )

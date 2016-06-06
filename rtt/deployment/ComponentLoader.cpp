@@ -7,10 +7,6 @@
 #include <rtt/plugin/PluginLoader.hpp>
 #include <rtt/types/TypekitRepository.hpp>
 
-#ifdef HAS_ROSLIB
-#include <rospack/rospack.h>
-#endif
-
 #ifndef _WIN32
 # include <dlfcn.h>
 #endif
@@ -59,15 +55,6 @@ static const char default_delimiter(';');
 static const std::string delimiters(":;");
 static const char default_delimiter(':');
 # endif
-
-// define RTT_UNUSED macro
-#ifndef RTT_UNUSED
-  #ifdef __GNUC__
-    #define RTT_UNUSED __attribute__((unused))
-  #else
-    #define RTT_UNUSED
-  #endif
-#endif
 
 /** Determine whether a file extension is actually part of a library version
 
