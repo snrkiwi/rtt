@@ -38,6 +38,7 @@
 #include "../ExecutionEngine.hpp"
 #include "../internal/DataSource.hpp"
 #include "../Service.hpp"
+#include "../base/TaskCore.hpp"
 #include "CommandFunctors.hpp"
 #include <Logger.hpp>
 #include <functional>
@@ -49,6 +50,10 @@
 
 #define TRACE_INIT() Logger::In in( _name )
 #define TRACE(msg) if (mtrace) log(Info) << '[' << this->getStatusStr() << ']' << std::string(" ") + msg <<endlog()
+
+#ifndef ASSERT_PROPER_EXECUTION_CYCLES
+//  #define ASSERT_PROPER_EXECUTION_CYCLES
+#endif
 
 namespace RTT {
     using namespace detail;
@@ -63,7 +68,7 @@ namespace RTT {
         : smpStatus(nill), _parent (parent) , _name(name), smStatus(Status::unloaded),
           initstate(0), finistate(0), current( 0 ), next(0), initc(0),
           currentProg(0), currentExit(0), currentHandle(0), currentEntry(0), currentRun(0), currentTrans(0),
-          checking_precond(false), mstep(false), mtrace(false), evaluating(0)
+          checking_precond(false), mstep(false), mtrace(false), evaluating(0), ee_cycle(0)
     {
         this->addState(0); // allows global state transitions
     }
@@ -271,6 +276,15 @@ namespace RTT {
         }
         os::MutexLock lock(execlock);
 
+#ifdef ASSERT_PROPER_EXECUTION_CYCLES
+        // we're loaded. Do some sanity checking.
+        if ( ee_cycle != 0 && ee_cycle == this->engine->getParent()->getCycleCounter() ) {
+            log(Error) << "StateMachine executed twice in one cycle. Consider filing a bug report !" <<endlog();
+            assert( false && "StateMachine executed twice in one cycle. Consider filing a bug report !" );
+        }
+#endif
+        ee_cycle = this->engine->getParent()->getCycleCounter();
+
         // internal transitional issues.
         switch (smpStatus) {
         case pausing:
@@ -463,7 +477,7 @@ namespace RTT {
             }
         else
             {
-                TRACE("Transition triggered from '"+ (current ? current->getName() : "null") +"' to '"+(newState ? newState->getName() : "null")+"'.");
+                TRACE("Transition triggered from '"+ (current ? current->getName() : "(null)") +"' to '"+(newState ? newState->getName() : "(null)")+"'.");
                 // reset handle and run, in case it is still set ( during error
                 // or when an event arrived ).
                 //currentRun = 0;
@@ -1038,7 +1052,7 @@ namespace RTT {
 
         // Run is executed before the transitions.
         if ( currentRun ) {
-            TRACE("Executing run program of '"+ current->getName() +"'" );
+            TRACE("Executing run program of '"+ (current ? current->getName() : "(null)") +"'" );
             if ( this->executeProgram(currentRun, stepping) == false )
                 return true;
             // done.
@@ -1156,6 +1170,14 @@ namespace RTT {
         TRACE_INIT();
         if ( cp == 0)
             return false;
+
+#ifdef ASSERT_PROPER_EXECUTION_CYCLES
+        if ( ee_cycle != 0 && ee_cycle != this->engine->getParent()->getCycleCounter() ) {
+            log(Error) << "Program executed in previous or next ee_cycle. Consider filing a bug report !" <<endlog();
+            assert( false && "Program executed in previous or next ee_cycle. Consider filing a bug report !" );
+        }
+#endif
+
         // execute this stateprogram and cleanup if needed.
         currentProg = cp;
         if ( stepping )
