@@ -36,7 +36,6 @@
 
 #include "operations_fixture.hpp"
 
-#include <boost/config.hpp>
 #include <memory>
 
 using namespace std;
@@ -608,7 +607,7 @@ BOOST_AUTO_TEST_CASE( testSharedConnections )
     // This test installs shared connections between mo1 and mo2 as writers and mi2 and mi3 as readers
 
 //    // Add a second input port mo3 to tc
-//#ifndef BOOST_NO_CXX11_SMART_PTR
+//#if __cplusplus > 199711L
 //    unique_ptr<RTT::OutputPort<double> >
 //#else
 //    auto_ptr<RTT::OutputPort<double> >
@@ -618,7 +617,7 @@ BOOST_AUTO_TEST_CASE( testSharedConnections )
 //    tc->addPort("mo3", *mo3);
 
     // Add a second input port mi3 to t2
-#ifndef BOOST_NO_CXX11_SMART_PTR
+#if __cplusplus > 199711L
     unique_ptr<RTT::InputPort<double> >
 #else
     auto_ptr<RTT::InputPort<double> >
@@ -783,7 +782,7 @@ BOOST_AUTO_TEST_CASE( testPortProxying )
     BOOST_CHECK(!write_port->connected());
 
     // Test cloning
-#ifndef BOOST_NO_CXX11_SMART_PTR
+#if __cplusplus > 199711L
     unique_ptr<base::InputPortInterface>
 #else
     auto_ptr<base::InputPortInterface>
