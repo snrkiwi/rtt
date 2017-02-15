@@ -316,6 +316,22 @@ typedef struct TLSF_struct {
 } tlsf_t;
 
 
+notify_fn1 malloc_notify_fn;
+notify_fn1 realloc_notify_fn;
+notify_fn1 calloc_notify_fn;
+notify_fn1 free_notify_fn;
+
+void set_notify_fn(notify_fn1 malloc,
+                   notify_fn1 realloc,
+                   notify_fn1 calloc,
+                   notify_fn1 free)
+{
+    malloc_notify_fn = malloc;
+    realloc_notify_fn = realloc;
+    calloc_notify_fn = calloc;
+    free_notify_fn = free;
+}
+
 /******************************************************************/
 /**************     Helping functions    **************************/
 /******************************************************************/
@@ -788,6 +804,11 @@ void *tlsf_malloc(size_t size)
 
     ret = malloc_ex(size, mp);
 
+    if (malloc_notify_fn)
+    {
+        malloc_notify_fn(size, ret);
+    }
+
     TLSF_RELEASE_LOCK(&((tlsf_t *)mp)->lock);
 
     return ret;
@@ -822,6 +843,11 @@ void *tlsf_realloc(void *ptr, size_t size)
 
     ret = realloc_ex(ptr, size, mp);
 
+    if (realloc_notify_fn)
+    {
+        realloc_notify_fn(size, ptr);
+    }
+
     TLSF_RELEASE_LOCK(&((tlsf_t *)mp)->lock);
 
     return ret;
@@ -836,6 +862,11 @@ void *tlsf_calloc(size_t nelem, size_t elem_size)
     TLSF_ACQUIRE_LOCK(&((tlsf_t *)mp)->lock);
 
     ret = calloc_ex(nelem, elem_size, mp);
+
+    if (calloc_notify_fn)
+    {
+        calloc_notify_fn((nelem * elem_size), ret);
+    }
 
     TLSF_RELEASE_LOCK(&((tlsf_t *)mp)->lock);
 
@@ -921,6 +952,10 @@ void free_ex(void *ptr, void *mem_pool)
     int fl = 0, sl = 0;
 
     if (!ptr) {
+        if (free_notify_fn)
+        {
+            free_notify_fn(0, ptr);
+        }
         return;
     }
     b = (bhdr_t *) ((char *) ptr - BHDR_OVERHEAD);
@@ -932,6 +967,10 @@ void free_ex(void *ptr, void *mem_pool)
 
     TLSF_VALGRIND_MEMPOOL_FREE(mem_pool, ptr);
     TLSF_VALGRIND_MAKE_MEM_UNDEFINED(ptr, MIN_BLOCK_SIZE);
+    if (free_notify_fn)
+    {
+        free_notify_fn(b->size & (~STATE_MASK), ptr);
+    }
 
     b->size |= FREE_BLOCK;
 

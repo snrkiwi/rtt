@@ -53,6 +53,13 @@ extern void tlsf_free(void *ptr);
 extern void *tlsf_realloc(void *ptr, size_t size);
 extern void *tlsf_calloc(size_t nelem, size_t elem_size);
 
+// will be called while mutex is held (if applicable)
+typedef void (*notify_fn1)(size_t size, void* p);
+extern void set_notify_fn(notify_fn1 malloc,
+                          notify_fn1 realloc,
+                          notify_fn1 calloc,
+                          notify_fn1 free);
+
 #ifdef	__cplusplus
 }
 #endif
