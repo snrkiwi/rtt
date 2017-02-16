@@ -60,6 +60,12 @@ extern std::size_t memcheck_nr_of_allocations_by_allocator_warning_limit;
 void oro_allocator_memcheck_allocate(void *p, std::size_t n);
 void oro_allocator_memcheck_deallocate(void *p, std::size_t n);
 
+
+    /**********************************************************************************************************************
+     * Information
+     *********************************************************************************************************************/
+void oro_allocator_memcheck_logState(std::ostream& sss);
+
 }} // namespace
 
 #endif // ORO_ALLOCATOR_MEMCHECK_HPP

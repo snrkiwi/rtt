@@ -311,4 +311,47 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
     // TODO: add checks here...
 }
 
+    /**********************************************************************************************************************
+     * Whenever someone deallocates memory...
+     *********************************************************************************************************************/
+void oro_allocator_memcheck_logState(std::ostream& sss)
+{
+    bpt::ptime  now;
+    std::string now_s;
+    getNow(now, now_s);
+
+    RTT::os::MutexLock lock(memcheck.mutex);
+    sss << "# timestamp,pid,pthreadid,allocator_hash,pointer,size" << std::endl
+        << "# Log at " << now_s << std::endl
+        << "# Outstanding allocs=" << memcheck.total_nr_of_allocations << " for " << memcheck.total_memory_usage << " bytes" << std::endl
+        << "# Count pointers=" << memcheck.allocations_by_pointer.size() << std::endl;
+
+    std::map<pointer, AllocData>::const_iterator    iter;
+    const std::ios::fmtflags flags = sss.flags();
+    for (iter= memcheck.allocations_by_pointer.begin();
+         iter!=memcheck.allocations_by_pointer.end();
+        ++iter)
+    {
+        const pointer p = iter->first;
+        const AllocData& a = iter->second;
+
+        std::string t_s;
+        formatTime(a.time, t_s);
+        sss << t_s << ','
+            << std::setfill(sss.widen(' '))
+            << std::left
+            << std::setw(7) << ((unsigned long int)a.pid)<< ','
+            << std::setfill(sss.widen('0'))
+            << std::hex
+            << std::setw(14) << ((unsigned long int)a.pthreadid)<< ','
+            << std::setw(2) << "0x" << std::setw(16) << a.allocator << ','
+            << std::setw(12) << p << ','
+            << std::dec
+            << std::setfill(sss.widen(' '))
+            << std::setw(1) << a.size
+            << std::endl;
+    }
+    sss.flags(flags);
+}
+
 }} // namespace
