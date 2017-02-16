@@ -64,7 +64,7 @@ std::ostream *memcheck_debug_stream = 0;
 //RTT::Logger *memcheck_error_stream = RTT::Logger::Instance();
 //RTT::Logger *memcheck_error_stream = 0;
 
-std::size_t memcheck_memory_usage_by_allocator_warning_limit = 16 * 1024;
+std::size_t memcheck_memory_usage_by_allocator_warning_limit = 8 * 1024;
 std::size_t memcheck_nr_of_allocations_by_allocator_warning_limit = 1000;
 
 /**********************************************************************************************************************
