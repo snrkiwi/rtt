@@ -170,7 +170,7 @@ void oro_allocator_memcheck_allocate(void *p, std::size_t n)
     // check for massive memory usage by a single allocator (identified by the hash of its backtrace)
     if (memcheck.allocated_memory_by_allocator[allocator_hash] > memcheck_memory_usage_by_allocator_warning_limit) {
         if (memcheck_error_stream) {
-            *memcheck_error_stream << "[oro_allocator_memcheck] [WARNING] " << n << " bytes of memory allocated by the following code path exceeds warning limit: " << memcheck.allocated_memory_by_allocator[allocator_hash] << " (> " << memcheck_memory_usage_by_allocator_warning_limit << ") bytes" << std::endl;
+            *memcheck_error_stream << "[oro_allocator_memcheck] [WARNING] New " << n << " byte allocation by the following code path, for a cumulative " << memcheck.allocated_memory_by_allocator[allocator_hash] << " bytes, exceeds warning limit of " << memcheck_memory_usage_by_allocator_warning_limit << " bytes" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[allocator_hash]) << std::endl;
         }
     }
