@@ -46,6 +46,9 @@ namespace RTT { namespace os {
 /**********************************************************************************************************************
  * Configuration variables
  *********************************************************************************************************************/
+
+// Whether checking is enabled. Defaults to true
+extern bool memcheck_enabled;
 //extern std::ostream *memcheck_error_stream;
 //extern std::ostream *memcheck_debug_stream;
 extern std::size_t memcheck_memory_usage_by_allocator_warning_limit;

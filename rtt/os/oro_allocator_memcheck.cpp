@@ -55,6 +55,9 @@ namespace RTT { namespace os {
 /**********************************************************************************************************************
  * Configuration variables
  *********************************************************************************************************************/
+
+bool memcheck_enabled = true;
+
 std::ostream *memcheck_error_stream = &std::cerr;
 std::ostream *memcheck_debug_stream = 0;
 // or...
@@ -144,6 +147,8 @@ static Stream &logBacktrace(Stream &stream, const backtrace_symbols_type &symbol
  *********************************************************************************************************************/
 void oro_allocator_memcheck_allocate(void *p, std::size_t n)
 {
+    if (!memcheck_enabled) return;
+
     hash_type allocator_hash = getHashFromBacktrace();
     RTT::os::MutexLock lock(memcheck.mutex);
 
@@ -189,6 +194,8 @@ void oro_allocator_memcheck_allocate(void *p, std::size_t n)
  *********************************************************************************************************************/
 void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
 {
+    if (!memcheck_enabled) return;
+
     hash_type deallocator_hash = getHashFromBacktrace();
     RTT::os::MutexLock lock(memcheck.mutex);
 
