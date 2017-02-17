@@ -41,9 +41,22 @@
 #pragma implementation
 #endif
 #include "BufferLockFree.hpp"
+#include <iostream>
 
 namespace RTT {
     namespace base {
+        std::list<BufferData*> BufferData::instances;
+        BufferData::BufferData(const std::string& n) :
+            name(n)
+        {
+            std::cout << "[BufferData] create  " << name << " at " << std::hex << this << std::endl;
+            instances.push_back(this);
+        }
+        BufferData::~BufferData()
+        {
+            std::cout << "[BufferData] destroy " << name << " at " << std::hex << this << std::endl;
+            instances.remove(this);
+        }
 #if defined(__GNUC__)
         // Force an instantiation, so that the compiler checks the syntax.
         template class BufferLockFree<double>;

@@ -44,6 +44,9 @@
 #include "../internal/AtomicMWSRQueue.hpp"
 #include "../internal/TsPool.hpp"
 #include <vector>
+#include <list>
+#include <string>
+#include <iostream>
 
 #ifdef ORO_PRAGMA_INTERFACE
 #pragma interface
@@ -54,6 +57,18 @@ namespace RTT
 
 
     using os::CAS;
+
+    // HACK no MP-safe. assume all instances created in Deployer thread
+    // See
+    // http://stackoverflow.com/questions/4917440/c-stl-container-for-template-base-class
+    struct BufferData
+    {
+        BufferData(const std::string& n);
+        virtual ~BufferData();
+        std::string name;
+        virtual void getData(size_t& capacity, size_t& size) = 0;
+        static std::list<BufferData*> instances;
+    };
 
     /**
      * A Lock-free buffer implementation to read and write
@@ -66,7 +81,7 @@ namespace RTT
      */
     template< class T>
     class BufferLockFree
-        : public BufferInterface<T>
+        : public BufferInterface<T>, public BufferData
     {
     public:
         typedef typename BufferInterface<T>::reference_t reference_t;
@@ -80,12 +95,17 @@ namespace RTT
         mutable internal::TsPool<Item> mpool;
         const bool mcircular;
     public:
+        virtual void getData(size_t& c, size_t& s)
+        {
+            c = capacity();
+            s = size();
+        }
         /**
          * Create a lock-free buffer wich can store \a bufsize elements.
          * @param bufsize the capacity of the buffer.
 '         */
         BufferLockFree( unsigned int bufsize, const T& initial_value = T(), bool circular = false)
-            : bufs( bufsize ), mpool(bufsize + 1), mcircular(circular)
+            : BufferData( typeid(this).name()), bufs( bufsize ), mpool(bufsize + 1), mcircular(circular)
         {
             mpool.data_sample( initial_value );
         }
