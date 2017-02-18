@@ -131,9 +131,11 @@ static hash_type getHashFromBacktrace()
 template <typename Stream>
 static Stream &logBacktrace(Stream &stream, const backtrace_symbols_type &symbols, const std::string &prefix = "[oro_allocator_memcheck] - ")
 {
+    const std::ios::fmtflags flags = stream.flags();
     for(std::size_t i = 0; i < symbols.size(); ++i) {
-        stream << prefix << "#" << std::left << std::setw(3) << i << " " << symbols[i] << std::endl;
+        stream << prefix << "#" << std::setfill(stream.widen(' ')) << std::left << std::setw(3) << i << " " << symbols[i] << std::endl;
     }
+    stream.flags(flags);
     return stream;
 }
 
