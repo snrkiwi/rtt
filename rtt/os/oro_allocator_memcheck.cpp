@@ -43,14 +43,33 @@
 #include <rtt/Logger.hpp>
 
 #include <boost/functional/hash.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>    // with I/O
 #include <execinfo.h>
 #include <cxxabi.h>
+#include <unistd.h>      // getpid()
 
 #include <map>
 #include <iomanip>
 
+namespace bpt	= boost::posix_time;
+
 
 namespace RTT { namespace os {
+
+void formatTime(const bpt::ptime t, std::string& t_s)
+{
+    static const size_t START = strlen("YYYYMMDDTHHMMSS,");
+
+    // format now as "YYYYMMDDTHHMMSS.ffffff"
+    t_s = bpt::to_iso_string(t);          // YYYYMMDDTHHMMSS,fffffffff
+    t_s.replace(START-1, 1, ".");         // replace "," with "."
+    t_s.erase(t_s.size()-3, 3);         // from nanosec to microsec
+}
+void getNow(bpt::ptime& now, std::string& now_s)
+{
+    now = bpt::microsec_clock::local_time();
+    formatTime(now, now_s);
+}
 
 /**********************************************************************************************************************
  * Configuration variables
@@ -76,15 +95,21 @@ typedef std::vector<std::string> backtrace_symbols_type;
 typedef void *pointer;
 struct AllocData
 {
+    pid_t           pid;
+    pthread_t       pthreadid;
     hash_type       allocator;
     std::size_t     size;
-    RTT::os::TimeService::ticks      time;
+    bpt::ptime      time;
     AllocData() :
+        pid(0),
+        pthreadid(0),
         allocator(0),
         size(0),
-        time(0)
+        time(bpt::not_a_date_time)
     {}
-    AllocData(hash_type a, std::size_t s, RTT::os::TimeService::ticks t) :
+    AllocData(pid_t p, pthread_t d, hash_type a, std::size_t s, bpt::ptime t) :
+        pid(p),
+        pthreadid(d),
         allocator(a),
         size(s),
         time(t)
@@ -107,11 +132,14 @@ static struct MemcheckStatistics
 /**********************************************************************************************************************
  * Helper functions
  *********************************************************************************************************************/
-static hash_type getHashFromBacktrace()
+static hash_type getHashFromBacktrace(const pthread_t tid)
 {
-    void *stack[256];
-    int n = backtrace(stack, sizeof(stack)/sizeof(void *));
-    hash_type hash = boost::hash_range(stack, stack + n);
+    static const size_t N=256;
+    void *stack[N];
+    int n = backtrace(stack, N);
+    assert(n < N-1);
+    stack[n] = (void*)tid;
+    hash_type hash = boost::hash_range(stack, stack + n + 1);
 
     // cache demangled backtrace
     RTT::os::MutexLock lock(memcheck.mutex);
@@ -164,7 +192,13 @@ void oro_allocator_memcheck_allocate(void *p, std::size_t n)
 {
     if (!memcheck_enabled) return;
 
-    hash_type allocator_hash = getHashFromBacktrace();
+    bpt::ptime  now;
+    std::string now_s;
+    getNow(now, now_s);
+
+    const pthread_t tid = pthread_self();
+
+    hash_type allocator_hash = getHashFromBacktrace(tid);
     RTT::os::MutexLock lock(memcheck.mutex);
 
     // some basic asserts
@@ -176,29 +210,29 @@ void oro_allocator_memcheck_allocate(void *p, std::size_t n)
     // update bookkeeping
     memcheck.nr_of_allocations_by_allocator[allocator_hash]++;
     memcheck.allocated_memory_by_allocator[allocator_hash] += n;
-    memcheck.allocations_by_pointer[p] = AllocData(allocator_hash, n, RTT::os::TimeService::Instance()->getTicks());
+    memcheck.allocations_by_pointer[p] = AllocData(getpid(), pthread_self(), allocator_hash, n, now);
 //    memcheck.allocator_by_pointer[p] = allocator_hash;
 //    memcheck.allocation_size_by_pointer[p] = n;
-//    memcheck.allocation_time_by_pointer[p] = RTT::os::TimeService::Instance()->getTicks();
+//    memcheck.allocation_time_by_pointer[p] = bpt::microsec_clock::local_time();
     memcheck.total_nr_of_allocations++;
     memcheck.total_memory_usage += n;
 
     // log allocation
     if (memcheck_debug_stream) {
-        *memcheck_debug_stream << "[oro_allocator_memcheck] Reserved " << n << " bytes at address " << p << ":" << std::endl;
+        *memcheck_debug_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << allocator_hash  << " [oro_allocator_memcheck] Reserved " << n << " bytes at address " << p << ":" << std::endl;
         logBacktrace(*memcheck_debug_stream, memcheck.backtrace_symbols[allocator_hash]) << std::endl;
     }
 
     // check for massive memory usage by a single allocator (identified by the hash of its backtrace)
     if (memcheck.allocated_memory_by_allocator[allocator_hash] > memcheck_memory_usage_by_allocator_warning_limit) {
         if (memcheck_error_stream) {
-            *memcheck_error_stream << "[oro_allocator_memcheck] [WARNING] New " << n << " byte allocation by the following code path, for a cumulative " << memcheck.allocated_memory_by_allocator[allocator_hash] << " bytes, exceeds warning limit of " << memcheck_memory_usage_by_allocator_warning_limit << " bytes" << std::endl;
+            *memcheck_error_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << allocator_hash << " [oro_allocator_memcheck] [WARNING] New " << n << " byte allocation by the following code path, for a cumulative " << memcheck.allocated_memory_by_allocator[allocator_hash] << " bytes, exceeds warning limit of " << memcheck_memory_usage_by_allocator_warning_limit << " bytes" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[allocator_hash]) << std::endl;
         }
     }
     if (memcheck.nr_of_allocations_by_allocator[allocator_hash] > memcheck_nr_of_allocations_by_allocator_warning_limit) {
         if (memcheck_error_stream) {
-            *memcheck_error_stream << "[oro_allocator_memcheck] [WARNING] The number of allocations by the following code path exceeds warning limit: " << memcheck.nr_of_allocations_by_allocator[allocator_hash] << " (> " << memcheck_nr_of_allocations_by_allocator_warning_limit << ")" << std::endl;
+            *memcheck_error_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << allocator_hash << " [oro_allocator_memcheck] [WARNING] The number of allocations by the following code path exceeds warning limit: " << memcheck.nr_of_allocations_by_allocator[allocator_hash] << " (> " << memcheck_nr_of_allocations_by_allocator_warning_limit << ")" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[allocator_hash]) << std::endl;
         }
     }
@@ -213,19 +247,25 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
 {
     if (!memcheck_enabled) return;
 
-    hash_type deallocator_hash = getHashFromBacktrace();
+    bpt::ptime  now;
+    std::string now_s;
+    getNow(now, now_s);
+
+    const pthread_t tid = pthread_self();
+
+    hash_type deallocator_hash = getHashFromBacktrace(tid);
     RTT::os::MutexLock lock(memcheck.mutex);
 
     // check that the memory at p was reserved before
     if (memcheck.allocations_by_pointer.find(p) == memcheck.allocations_by_pointer.end()) {
 //    if (memcheck.allocator_by_pointer.find(p) == memcheck.allocator_by_pointer.end()) {
         if (memcheck.deallocator_by_pointer.find(p) == memcheck.deallocator_by_pointer.end()) {
-            *memcheck_error_stream << "[oro_allocator_memcheck] [ERROR] Freed " << n << " bytes at address " << p << ", but this block was never reserved with oro_rt_malloc() before!" << std::endl;
+            *memcheck_error_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << deallocator_hash << " [oro_allocator_memcheck] [ERROR] Freed " << n << " bytes at address " << p << ", but this block was never reserved with oro_rt_malloc() before!" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[deallocator_hash]) << std::endl;
         } else {
-            *memcheck_error_stream << "[oro_allocator_memcheck] [ERROR] Freed " << n << " bytes at address " << p << ", but this block was already freed before!" << std::endl;
+            *memcheck_error_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << deallocator_hash << " [oro_allocator_memcheck] [ERROR] Freed " << n << " bytes at address " << p << ", but this block was already freed before!" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[deallocator_hash]) << std::endl;
-            *memcheck_error_stream << "[oro_allocator_memcheck] This is where it was already freed:" << std::endl;
+            *memcheck_error_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << deallocator_hash << " [oro_allocator_memcheck] This is where it was already freed:" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[memcheck.deallocator_by_pointer[p]]) << std::endl;
         }
         return;
@@ -248,12 +288,12 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
 //    assert(n == 0 || memcheck.allocation_size_by_pointer[p] == n);
     assert(memcheck.allocated_memory_by_allocator[allocator_hash] >= memcheck.allocations_by_pointer[p].size);
 //    assert(memcheck.allocated_memory_by_allocator[allocator_hash] >= memcheck.allocation_size_by_pointer[p]);
-    assert(memcheck.allocations_by_pointer[p].time <= RTT::os::TimeService::Instance()->getTicks());
-//    assert(memcheck.allocation_time_by_pointer[p] <= RTT::os::TimeService::Instance()->getTicks());
+    assert(memcheck.allocations_by_pointer[p].time <= bpt::microsec_clock::local_time());
+//    assert(memcheck.allocation_time_by_pointer[p] <= bpt::microsec_clock::local_time());
 
     // log deallocation
     if (memcheck_debug_stream) {
-        *memcheck_debug_stream << "[oro_allocator_memcheck] Freed " << n << " bytes at address " << p << ":" << std::endl;
+        *memcheck_debug_stream << now_s << ' ' << ((unsigned long int)tid) << ' ' << deallocator_hash <<  " [oro_allocator_memcheck] Freed " << n << " bytes at address " << p << ":" << std::endl;
         logBacktrace(*memcheck_debug_stream, memcheck.backtrace_symbols[deallocator_hash]) << std::endl;
     }
 
