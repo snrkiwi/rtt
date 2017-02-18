@@ -74,15 +74,30 @@ typedef std::size_t hash_type; // used as a hash over backtraces
 typedef std::vector<std::string> backtrace_symbols_type;
 
 typedef void *pointer;
+struct AllocData
+{
+    hash_type       allocator;
+    std::size_t     size;
+    RTT::os::TimeService::ticks      time;
+    AllocData() :
+        allocator(0),
+        size(0),
+        time(0)
+    {}
+    AllocData(hash_type a, std::size_t s, RTT::os::TimeService::ticks t) :
+        allocator(a),
+        size(s),
+        time(t)
+    {}
+};
+
 static struct MemcheckStatistics
 {
     RTT::os::Mutex mutex;
     std::map<hash_type, std::size_t> nr_of_allocations_by_allocator;
     std::map<hash_type, std::size_t> allocated_memory_by_allocator;
-    std::map<pointer, hash_type> allocator_by_pointer;
+    std::map<pointer, AllocData> allocations_by_pointer;
     std::map<pointer, hash_type> deallocator_by_pointer;
-    std::map<pointer, std::size_t> allocation_size_by_pointer;
-    std::map<pointer, RTT::os::TimeService::ticks> allocation_time_by_pointer;
     std::size_t total_nr_of_allocations;
     std::size_t total_memory_usage;
 
@@ -153,16 +168,18 @@ void oro_allocator_memcheck_allocate(void *p, std::size_t n)
     RTT::os::MutexLock lock(memcheck.mutex);
 
     // some basic asserts
-    assert(memcheck.allocator_by_pointer.find(p) == memcheck.allocator_by_pointer.end());
-    assert(memcheck.allocation_size_by_pointer.find(p) == memcheck.allocation_size_by_pointer.end());
-    assert(memcheck.allocation_time_by_pointer.find(p) == memcheck.allocation_time_by_pointer.end());
+    assert(memcheck.allocations_by_pointer.find(p) == memcheck.allocations_by_pointer.end());
+//    assert(memcheck.allocator_by_pointer.find(p) == memcheck.allocator_by_pointer.end());
+//    assert(memcheck.allocation_size_by_pointer.find(p) == memcheck.allocation_size_by_pointer.end());
+//    assert(memcheck.allocation_time_by_pointer.find(p) == memcheck.allocation_time_by_pointer.end());
 
     // update bookkeeping
     memcheck.nr_of_allocations_by_allocator[allocator_hash]++;
     memcheck.allocated_memory_by_allocator[allocator_hash] += n;
-    memcheck.allocator_by_pointer[p] = allocator_hash;
-    memcheck.allocation_size_by_pointer[p] = n;
-    memcheck.allocation_time_by_pointer[p] = RTT::os::TimeService::Instance()->getTicks();
+    memcheck.allocations_by_pointer[p] = AllocData(allocator_hash, n, RTT::os::TimeService::Instance()->getTicks());
+//    memcheck.allocator_by_pointer[p] = allocator_hash;
+//    memcheck.allocation_size_by_pointer[p] = n;
+//    memcheck.allocation_time_by_pointer[p] = RTT::os::TimeService::Instance()->getTicks();
     memcheck.total_nr_of_allocations++;
     memcheck.total_memory_usage += n;
 
@@ -200,7 +217,8 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
     RTT::os::MutexLock lock(memcheck.mutex);
 
     // check that the memory at p was reserved before
-    if (memcheck.allocator_by_pointer.find(p) == memcheck.allocator_by_pointer.end()) {
+    if (memcheck.allocations_by_pointer.find(p) == memcheck.allocations_by_pointer.end()) {
+//    if (memcheck.allocator_by_pointer.find(p) == memcheck.allocator_by_pointer.end()) {
         if (memcheck.deallocator_by_pointer.find(p) == memcheck.deallocator_by_pointer.end()) {
             *memcheck_error_stream << "[oro_allocator_memcheck] [ERROR] Freed " << n << " bytes at address " << p << ", but this block was never reserved with oro_rt_malloc() before!" << std::endl;
             logBacktrace(*memcheck_error_stream, memcheck.backtrace_symbols[deallocator_hash]) << std::endl;
@@ -214,19 +232,24 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
     }
 
     // some basic asserts
-    assert(memcheck.allocator_by_pointer.find(p) != memcheck.allocator_by_pointer.end());
-    assert(memcheck.allocation_size_by_pointer.find(p) != memcheck.allocation_size_by_pointer.end());
-    assert(memcheck.allocation_time_by_pointer.find(p) != memcheck.allocation_time_by_pointer.end());
+    assert(memcheck.allocations_by_pointer.find(p) != memcheck.allocations_by_pointer.end());
+//    assert(memcheck.allocator_by_pointer.find(p) != memcheck.allocator_by_pointer.end());
+//    assert(memcheck.allocation_size_by_pointer.find(p) != memcheck.allocation_size_by_pointer.end());
+//    assert(memcheck.allocation_time_by_pointer.find(p) != memcheck.allocation_time_by_pointer.end());
     assert(memcheck.total_memory_usage >= n);
 
     // who allocated this before?
-    hash_type allocator_hash = memcheck.allocator_by_pointer.at(p);
+    hash_type allocator_hash = memcheck.allocations_by_pointer.at(p).allocator;
+//    hash_type allocator_hash = memcheck.allocator_by_pointer.at(p);
 
     // some more asserts
     assert(memcheck.nr_of_allocations_by_allocator[allocator_hash] > 0);
-    assert(n == 0 || memcheck.allocation_size_by_pointer[p] == n);
-    assert(memcheck.allocated_memory_by_allocator[allocator_hash] >= memcheck.allocation_size_by_pointer[p]);
-    assert(memcheck.allocation_time_by_pointer[p] <= RTT::os::TimeService::Instance()->getTicks());
+    assert((n == 0) || (memcheck.allocations_by_pointer[p].size == n));
+//    assert(n == 0 || memcheck.allocation_size_by_pointer[p] == n);
+    assert(memcheck.allocated_memory_by_allocator[allocator_hash] >= memcheck.allocations_by_pointer[p].size);
+//    assert(memcheck.allocated_memory_by_allocator[allocator_hash] >= memcheck.allocation_size_by_pointer[p]);
+    assert(memcheck.allocations_by_pointer[p].time <= RTT::os::TimeService::Instance()->getTicks());
+//    assert(memcheck.allocation_time_by_pointer[p] <= RTT::os::TimeService::Instance()->getTicks());
 
     // log deallocation
     if (memcheck_debug_stream) {
@@ -237,10 +260,11 @@ void oro_allocator_memcheck_deallocate(void *p, std::size_t n)
     // update bookkeeping
     memcheck.nr_of_allocations_by_allocator[allocator_hash]--;
     memcheck.allocated_memory_by_allocator[allocator_hash] -= n;
-    memcheck.allocator_by_pointer.erase(p);
+    memcheck.allocations_by_pointer.erase(p);
+//    memcheck.allocator_by_pointer.erase(p);
     memcheck.deallocator_by_pointer[p] = deallocator_hash;
-    memcheck.allocation_size_by_pointer.erase(p);
-    memcheck.allocation_time_by_pointer.erase(p);
+//    memcheck.allocation_size_by_pointer.erase(p);
+//    memcheck.allocation_time_by_pointer.erase(p);
     memcheck.total_nr_of_allocations--;
     memcheck.total_memory_usage -= n;
 
