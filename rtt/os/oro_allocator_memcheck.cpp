@@ -338,17 +338,14 @@ void oro_allocator_memcheck_logState(std::ostream& sss)
         std::string t_s;
         formatTime(a.time, t_s);
         sss << t_s << ','
-            << std::setfill(sss.widen(' '))
             << std::left
-            << std::setw(7) << ((unsigned long int)a.pid)<< ','
-            << std::setfill(sss.widen('0'))
+            << a.pid<< ','
             << std::hex
-            << std::setw(14) << ((unsigned long int)a.pthreadid)<< ','
-            << std::setw(2) << "0x" << std::setw(16) << a.allocator << ','
-            << std::setw(12) << p << ','
+            << "0x" << a.pthreadid << ','
+            << "0x" << a.allocator << ','
+            << p << ','     // pointer automatically adds "0x" prefix
             << std::dec
-            << std::setfill(sss.widen(' '))
-            << std::setw(1) << a.size
+            << a.size
             << std::endl;
     }
     sss.flags(flags);
