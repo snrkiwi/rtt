@@ -188,6 +188,13 @@ namespace RTT
 		return 0;
 	}
 
+	INTERNAL_QUAL unsigned long int rtos_task_get_pthreadid(const RTOS_TASK* task)
+	{
+		if (task)
+			return (unsigned long int)(task->thread);
+		return 0;
+	}
+
 	INTERNAL_QUAL int rtos_task_is_self(const RTOS_TASK* task) {
 	    pthread_t self = pthread_self();
 	    if ( pthread_equal(self, task->thread) == 0 ) // zero means false.

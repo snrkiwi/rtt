@@ -274,6 +274,13 @@ namespace RTT
 		return 0;
 	}
 
+	INTERNAL_QUAL unsigned long int rtos_task_get_pthreadid(const RTOS_TASK* task)
+	{
+		if (task)
+			return (unsigned long int)(task->thread);
+		return 0;
+	}
+
 	INTERNAL_QUAL int rtos_task_set_cpu_affinity(RTOS_TASK * task, unsigned cpu_affinity)
 	{
         return -1;
