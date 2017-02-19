@@ -311,7 +311,7 @@ namespace RTT {
             log(Info) << "Thread created with scheduler type '"
                     << (getScheduler() == ORO_SCHED_OTHER ? "ORO_SCHED_OTHER" : "ORO_SCHED_RT") << "', priority " << getPriority()
                     << ", cpu affinity " << getCpuAffinity()
-                    << " and period " << getPeriod() << " (PID= " << getPid() << " )." << endlog();
+                    << " and period " << getPeriod() << " (PID= " << getPid() << ", pthreadID=" << getPthreadid() << " )." << endlog();
 #ifdef OROPKG_OS_THREAD_SCOPE
             if (d)
             {
@@ -610,6 +610,11 @@ namespace RTT {
         unsigned int Thread::getPid() const
         {
         	return rtos_task_get_pid(&rtos_task);
+        }
+
+        unsigned long int Thread::getPthreadid() const
+        {
+            return rtos_task_get_pthreadid(&rtos_task);
         }
 
         void Thread::yield()

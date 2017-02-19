@@ -111,6 +111,11 @@ namespace RTT
     	return rtos_task_get_pid(&main_task);
     }
 
+    unsigned long int MainThread::getPthreadid() const
+    {
+        return rtos_task_get_pthreadid(&main_task);
+    }
+
     bool MainThread::setPeriod(Seconds period)
     {
         return false;

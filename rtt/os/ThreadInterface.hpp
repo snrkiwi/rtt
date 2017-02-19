@@ -190,6 +190,12 @@ namespace RTT
              */
             virtual unsigned int getPid() const = 0;
 
+            /**
+             * Returns the pthread ID of this thread, as assigned by the
+             * Operating System.
+             */
+            virtual unsigned long int getPthreadid() const = 0;
+
             virtual void setMaxOverrun(int m) = 0;
 
             virtual int getMaxOverrun() const = 0;

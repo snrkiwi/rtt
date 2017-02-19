@@ -113,6 +113,14 @@ namespace RTT {
             unsigned int rtos_task_get_pid(const RTOS_TASK* task);
 
             /**
+             * Returns the pthread ID the OS gave to the task \a task.
+             * @param task The task handle of the thread to query
+             * @return 0 typically denotes the pthread ID could not be obtained,
+             * but any interpretation is left to the user of the Operating System.
+             */
+            unsigned long int rtos_task_get_pthreadid(const RTOS_TASK* task);
+
+            /**
              * Set the scheduler of a given task \a t to a the type \a sched_type.
              * In some RTOS's the scheduler can't be changed or the change can
              * only be done for the calling thread.

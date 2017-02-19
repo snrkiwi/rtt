@@ -220,6 +220,8 @@ namespace RTT
             virtual int getPriority() const;
 
             virtual unsigned int getPid() const;
+
+            virtual unsigned long int getPthreadid() const;
             /**
              * Set cpu affinity for this thread
              * @cpu_affinity The cpu affinity of the thread (@see rtos_task_set_cpu_affinity).
