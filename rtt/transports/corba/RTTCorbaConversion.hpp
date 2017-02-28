@@ -365,6 +365,7 @@ namespace RTT {
       }
     };
 
+#if 0
 #ifdef OS_RT_MALLOC
     template<>
     struct AnyConversion< rt_string >
@@ -408,6 +409,7 @@ namespace RTT {
       }
 
     };
+#endif
 #endif
   }
 }

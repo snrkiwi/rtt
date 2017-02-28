@@ -51,7 +51,7 @@ RTT_EXPORT_TEMPLATE_TYPE(std::string)
 
 #include <rtt/rt_string.hpp>
 
-template class std::basic_string<char, std::char_traits<char>, RTT::os::rt_allocator<char> >;
-RTT_EXPORT_TEMPLATE_TYPE(RTT::rt_string)
+//template class std::basic_string<char, std::char_traits<char>, RTT::os::rt_allocator<char> >;
+//RTT_EXPORT_TEMPLATE_TYPE(RTT::rt_string)
 
 
