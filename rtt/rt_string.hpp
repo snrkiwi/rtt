@@ -46,10 +46,12 @@
 namespace RTT
 {
     /// Real-time allocatable, dynamically-sized string
-    typedef std::basic_string<char, std::char_traits<char>, RTT::os::rt_allocator<char> > rt_string;
+//    typedef std::basic_string<char, std::char_traits<char>, RTT::os::rt_allocator<char> > rt_string;
+    typedef std::string rt_string;
 
     /// Real-time allocatable, dynamically-size output string stream
-    typedef std::basic_ostringstream<char, std::char_traits<char>, RTT::os::rt_allocator<char> > rt_ostringstream;
+//    typedef std::basic_ostringstream<char, std::char_traits<char>, RTT::os::rt_allocator<char> > rt_ostringstream;
+    typedef std::ostringstream rt_ostringstream;
 
     //! convert from real-time string to std::string
     inline std::string makeString(const RTT::rt_string& str)
