@@ -72,7 +72,7 @@ namespace RTT { namespace internal {
         virtual bool write(param_t sample)
         {
             if (buffer->Push(sample))
-                return this->signal();
+                return true; //this->signal();
             return true;
         }
 
