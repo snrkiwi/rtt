@@ -155,14 +155,50 @@ namespace RTT
 	    }
 	    rv = pthread_create(&(task->thread), &(task->attr),
 	    		rtos_posix_thread_wrapper, xcookie);
+        if (rv != 0) {
+            log(Error) << "Failed to create thread " << task->name << ": "
+                       << strerror(rv) << endlog();
+            return rv;
+        }
 
-	if ( cpu_affinity != (unsigned)~0 ) {
-	  log(Debug) << "Setting CPU affinity to " << cpu_affinity << endlog();
-	  if (0 != rtos_task_set_cpu_affinity(task, cpu_affinity))
-	    {
-	      log(Error) << "Failed to set CPU affinity to " << cpu_affinity << endlog();
-	    }
-	}
+#ifdef ORO_HAVE_PTHREAD_SETNAME_NP
+        // Set thread name to match task name, to help with debugging
+        {
+            // trim the name to fit 16 bytes restriction (including terminating
+            // \0 character) of pthread_setname_np
+            static const int MAX_THREAD_NAME_SIZE = 15;
+            char n[MAX_THREAD_NAME_SIZE + 1];
+            const char *thread_name = task->name;
+            const std::size_t thread_name_len = strlen(thread_name);
+            if (thread_name_len > MAX_THREAD_NAME_SIZE) {
+                // result = first 7 chars + "~" + last 7 chars
+                strncpy(&n[0], thread_name, 7);
+                n[7] = '~';
+                strncpy(&n[8], &thread_name[thread_name_len - 7], 7);
+                // terminate below
+            }
+            else
+            {
+                // result = thread_name
+                strncpy(&n[0], thread_name, MAX_THREAD_NAME_SIZE);
+            }
+            n[MAX_THREAD_NAME_SIZE] = '\0'; // explicitly terminate
+            int result = pthread_setname_np(task->thread, &n[0]);
+            if (result != 0) {
+                log(Error) << "Failed to set thread name for " << task->name << ": "
+                           << strerror(result) << endlog();
+            }
+        }
+#endif // ORO_HAVE_PTHREAD_SETNAME_NP
+
+        if ( cpu_affinity != (unsigned)~0 ) {
+            log(Debug) << "Setting CPU affinity to " << cpu_affinity << endlog();
+            int result = rtos_task_set_cpu_affinity(task, cpu_affinity);
+            if (result != 0) {
+                log(Error) << "Failed to set CPU affinity to " << cpu_affinity << " for " << task->name << ": "
+                           << strerror(result) << endlog();
+            }
+        }
 
         return rv;
 	}
