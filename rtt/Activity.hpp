@@ -50,7 +50,7 @@ namespace RTT
 {
 
     /**
-     * @brief An Activity is an object that represents a thread.
+     * @brief An Activity executes a RunnableInterface object in a (periodic) thread.
      *
      * This object implements the base::ActivityInterface and maps that to an
      * OS thread, using the RTT::os::Thread class. One Activity object
@@ -59,6 +59,11 @@ namespace RTT
      *
      * When provided one, it will execute a base::RunnableInterface object, or the equivalent methods in
      * it's own interface when none is given.
+     *
+     * For a periodic Activity, when it misses its deadline because user code
+     * take too long to execute, it will skip the required number of periodic
+     * execution steps in order to be back on time. This is the ORO_WAIT_REL wait
+     * policy and can be changed by calling setWaitPeriodPolicy(ORO_WAIT_ABS)
      *
      * @ingroup CoreLibActivities
      */
@@ -102,6 +107,21 @@ namespace RTT
          * @param name The name of the underlying thread.
          */
         Activity(int priority, Seconds period,
+                 base::RunnableInterface* r = 0, const std::string& name ="Activity");
+
+        /**
+         * @brief Create an Activity with a given scheduler type and priority.
+         *
+         * @param scheduler
+         *        The scheduler in which the activity's thread must run. Use ORO_SCHED_OTHER or
+         *        ORO_SCHED_RT.
+         * @param priority
+         *        The priority of this activity.
+         * @param r
+         *        The optional base::RunnableInterface to run exclusively within this Activity
+         * @param name The name of the underlying thread.
+         */
+        Activity(int scheduler, int priority,
                  base::RunnableInterface* r = 0, const std::string& name ="Activity");
 
         /**
@@ -169,6 +189,8 @@ namespace RTT
 
         virtual bool setCpuAffinity(unsigned cpu);
 
+        void setWaitPeriodPolicy(int p);
+
         virtual os::ThreadInterface* thread();
 
         /**
@@ -210,6 +232,7 @@ namespace RTT
          */
         bool mtimeout;
         bool mstopRequested;
+        bool mabswaitpolicy;
     };
 
 }

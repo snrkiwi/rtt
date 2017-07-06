@@ -32,6 +32,8 @@
 #cmakedefine ORO_OS_LINUX_CAP_NG
 
 #cmakedefine ORO_HAVE_PTHREAD_SETNAME_NP
+#cmakedefine ORO_HAVE_BOOST_UUID
+#cmakedefine ORO_HAVE_LIBUUID
 
 #cmakedefine ORO_OS_USE_BOOST_THREAD
 #ifdef ORO_OS_USE_BOOST_THREAD

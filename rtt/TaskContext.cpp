@@ -69,25 +69,11 @@ namespace RTT
 
     TaskContext::TaskContext(const std::string& name, TaskState initial_state /*= Stopped*/)
         :  TaskCore( initial_state)
-           ,portqueue( new MWSRQueue<PortInterface*>(64) )
            ,tcservice(new Service(name,this) ), tcrequests( new ServiceRequester(name,this) )
 #if defined(ORO_ACT_DEFAULT_SEQUENTIAL)
            ,our_act( new SequentialActivity( this->engine() ) )
 #elif defined(ORO_ACT_DEFAULT_ACTIVITY)
            ,our_act( new Activity( this->engine(), name ) )
-#endif
-    {
-        this->setup();
-    }
-
-    TaskContext::TaskContext(const std::string& name, ExecutionEngine* parent, TaskState initial_state /*= Stopped*/ )
-        :  TaskCore(parent, initial_state)
-           ,portqueue( new MWSRQueue<PortInterface*>(64) )
-           ,tcservice(new Service(name,this) ), tcrequests( new ServiceRequester(name,this) )
-#if defined(ORO_ACT_DEFAULT_SEQUENTIAL)
-           ,our_act( parent ? 0 : new SequentialActivity( this->engine() ) )
-#elif defined(ORO_ACT_DEFAULT_ACTIVITY)
-           ,our_act( parent ? 0 : new Activity( this->engine(), name ) )
 #endif
     {
         this->setup();
@@ -138,9 +124,14 @@ namespace RTT
             // here would only lead to calling invalid virtual functions.
             // [Rule no 1: Don't call virtual functions in a destructor.]
             // [Rule no 2: Don't call virtual functions in a constructor.]
-            tcservice->clear();
+            this->clear();
 
-            tcrequests->clear();
+            // these need to be freed before we cleanup the EE:
+            localservs.clear();
+            tcservice->setOwner(0);
+            tcservice.reset();
+            tcrequests->setOwner(0);
+            tcrequests.reset();
 
             // remove from all users.
             while( !musers.empty() ) {
@@ -154,7 +145,6 @@ namespace RTT
             }
             // Do not call this->disconnect() !!!
             // Ports are probably already destructed by user code.
-            delete portqueue;
         }
 
     bool TaskContext::connectPorts( TaskContext* peer )
@@ -353,13 +343,14 @@ namespace RTT
         if ( new_act == 0) {
 #if defined(ORO_ACT_DEFAULT_SEQUENTIAL)
             new_act = new SequentialActivity();
-#elseif defined(ORO_ACT_DEFAULT_ACTIVITY)
+#elif defined(ORO_ACT_DEFAULT_ACTIVITY)
             new_act = new Activity();
 #endif
         }
         new_act->stop();
         if(our_act){
             our_act->stop();
+            our_act.reset();
         }
         new_act->run( this->engine() );
         our_act = ActivityInterface::shared_ptr( new_act );
@@ -390,6 +381,7 @@ namespace RTT
     void TaskContext::clear()
     {
         tcservice->clear();
+        tcrequests->clear();
     }
 
     bool TaskContext::ready()
@@ -431,39 +423,31 @@ namespace RTT
     void TaskContext::dataOnPort(PortInterface* port)
     {
         if ( this->dataOnPortHook(port) ) {
-            portqueue->enqueue( port );
-            this->getActivity()->trigger();
+            this->engine()->process(port);
         }
     }
 
-    bool TaskContext::dataOnPortHook( base::PortInterface* ) {
+    bool TaskContext::dataOnPortHook(PortInterface*) {
         return this->isRunning();
     }
 
-    void TaskContext::dataOnPortCallback(InputPortInterface* port, TaskContext::SlotFunction callback) {
+    void TaskContext::dataOnPortCallback(PortInterface* port) {
+        UserCallbacks::iterator it = user_callbacks.find(port);
+        if (it != user_callbacks.end() )
+            it->second(port); // fire the user callback
+    }
+
+    void TaskContext::setDataOnPortCallback(InputPortInterface* port, TaskContext::SlotFunction callback) {
         // user_callbacks will only be emitted from updateHook().
         MutexLock lock(mportlock);
         user_callbacks[port] = callback;
     }
 
-    void TaskContext::dataOnPortRemoved(PortInterface* port) {
+    void TaskContext::removeDataOnPortCallback(PortInterface* port) {
         MutexLock lock(mportlock);
         UserCallbacks::iterator it = user_callbacks.find(port);
         if (it != user_callbacks.end() ) {
             user_callbacks.erase(it);
-        }
-    }
-
-    void TaskContext::prepareUpdateHook()
-    {
-        if ( portqueue->isEmpty() )
-            return;
-        MutexLock lock(mportlock);
-        PortInterface* port = 0;
-        while ( portqueue->dequeue( port ) == true ) {
-            UserCallbacks::iterator it = user_callbacks.find(port);
-            if (it != user_callbacks.end() )
-                it->second(port); // fire the user callback
         }
     }
 }

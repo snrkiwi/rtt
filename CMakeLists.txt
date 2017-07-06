@@ -1,17 +1,17 @@
 #
 # Test CMake version
 #
-CMAKE_MINIMUM_REQUIRED(VERSION 2.6.0)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # for CMake 2.6 corrected behaviour (see "cmake --help-policy CMP0003")
-IF(COMMAND cmake_policy AND ${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} GREATER 4)
+IF(POLICY CMP0003)
   CMAKE_POLICY(SET CMP0003 NEW)
-ENDIF(COMMAND cmake_policy AND ${CMAKE_MAJOR_VERSION} EQUAL 2 AND ${CMAKE_MINOR_VERSION} GREATER 4)
-IF(COMMAND cmake_policy)
-    IF(NOT (${CMAKE_VERSION} VERSION_LESS 3.0.0))
-        CMAKE_POLICY(SET CMP0026 OLD) # Disallow use of the LOCATION property for build targets.
-    ENDIF()
-ENDIF()
+ENDIF(POLICY CMP0003)
+
+# Suppress cmake policy warning in included rtt_macros.cmake file in CMake >= 3.0.2 (see "cmake --help-policy CMP0026")
+if(POLICY CMP0026)
+  cmake_policy(SET CMP0026 OLD)
+endif()
 
 ###################################################
 #                                                 #
@@ -22,13 +22,13 @@ ENDIF()
 PROJECT(orocos-rtt)
 
 
-SET( RTT_VERSION 2.7.0 )
+SET( RTT_VERSION 2.9.0 )
 STRING( REGEX MATCHALL "[0-9]+" RTT_VERSIONS ${RTT_VERSION} )
 LIST( GET RTT_VERSIONS 0 RTT_VERSION_MAJOR)
 LIST( GET RTT_VERSIONS 1 RTT_VERSION_MINOR)
 LIST( GET RTT_VERSIONS 2 RTT_VERSION_PATCH)
-
-MESSAGE( "Orocos RTT version ${VERSION} (${RTT_VERSION_MAJOR}.${RTT_VERSION_MINOR}.${RTT_VERSION_PATCH})" )
+SET( RTT_SOVERSION ${RTT_VERSION_MAJOR}.${RTT_VERSION_MINOR} )
+MESSAGE( "Orocos RTT version ${RTT_VERSION}" )
 
 SET( PROJ_SOURCE_DIR ${orocos-rtt_SOURCE_DIR} )
 SET( PROJ_BINARY_DIR ${orocos-rtt_BINARY_DIR} )
@@ -43,11 +43,6 @@ if (NOT EXISTS ${PROJ_SOURCE_DIR}/orocos-rtt.cmake)
   INCLUDE(${PROJ_SOURCE_DIR}/orocos-rtt.default.cmake)
 endif ()
 
-OPTION(USE_CPP11 "Turn on to replace boost::bind with cpp11 bind." OFF)
-if(USE_CPP11)
-  ADD_DEFINITIONS(-DUSE_CPP11)
-endif(USE_CPP11)
-
 # On Windows, the default CMAKE_INSTALL_PREFIX is either:
 # C:\Program Files\orocos-rtt or C:\Program Files (x86)\orocos-rtt
 # However, we want it to be either:
@@ -60,10 +55,6 @@ IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
       )
   ENDIF(MSVC)
 ENDIF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-
-# Tell deployer to use ROSlib support.
-set(ROSLIB_SUPPORT TRUE)
-include(config/FindRoslib.cmake)
 
 # Export file name
 set(LIBRARY_EXPORT_FILE "orocos-rtt-${OROCOS_TARGET}-libraries")
@@ -182,7 +173,14 @@ INSTALL(FILES UseOROCOS-RTT.cmake UseOROCOS-RTT-helpers.cmake config/cmake_unins
 # Install package.xml
 INSTALL(FILES package.xml DESTINATION share/rtt)
 
-# Install an env-hook if catkin is found
+# Install an env-hook in etc/orocos/${OROCOS_TARGET}/profile.d
+configure_file(env-hooks/00.rtt.sh.in ${CMAKE_CURRENT_BINARY_DIR}/env-hooks/00.rtt.sh @ONLY)
+install(
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/env-hooks/00.rtt.sh
+  DESTINATION etc/orocos/profile.d
+)
+
+# Install a catkin env-hook if catkin is installed
 find_package(catkin QUIET)
 if(catkin_FOUND)
   catkin_add_env_hooks(00.rtt SHELLS sh DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/env-hooks)

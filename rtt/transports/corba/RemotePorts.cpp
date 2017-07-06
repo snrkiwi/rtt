@@ -47,7 +47,6 @@
 #include "../../internal/ConnID.hpp"
 #include "../../rtt-detail-fwd.hpp"
 
-
 using namespace std;
 using namespace RTT::detail;
 
@@ -78,13 +77,8 @@ void RemotePort<BaseClass>::disconnect()
 {
     dataflow->disconnectPort(this->getName().c_str());
 }
-template<typename BaseClass>
-bool RemotePort<BaseClass>::disconnect(PortInterface* port)
-{
-    Logger::In in("RemotePort::disconnect(PortInterface& port)");
-    log(Error) << "Disconnecting a single port not yet supported." <<endlog();
-    return false;
-}
+
+
 template<typename BaseClass>
 PortableServer::POA_ptr RemotePort<BaseClass>::_default_POA()
 { return PortableServer::POA::_duplicate(mpoa); }
@@ -107,11 +101,19 @@ bool RemotePort<BaseClass>::addConnection(RTT::internal::ConnID* port_id, Channe
     return false;
 }
 
+template<typename BaseClass>
+RTT::base::ChannelElementBase* RemotePort<BaseClass>::getEndpoint() const
+{
+    return 0;
+}
 
 RemoteInputPort::RemoteInputPort(RTT::types::TypeInfo const* type_info,
         CDataFlowInterface_ptr dataflow, std::string const& reader_port,
         PortableServer::POA_ptr poa)
     : RemotePort< RTT::base::InputPortInterface >(type_info, dataflow, reader_port, poa)
+{}
+
+void RemoteInputPort::clear()
 {}
 
 RTT::base::DataSourceBase* RemoteInputPort::getDataSource()
@@ -137,7 +139,8 @@ RTT::base::ChannelElementBase::shared_ptr RemoteInputPort::buildRemoteChannelOut
             return 0;
         }
         remote = CRemoteChannelElement::_narrow( ret.in() );
-        policy.name_id = toRTT(cpolicy).name_id;
+        policy.name_id = cpolicy.name_id;
+        policy.data_size = cpolicy.data_size;
     }
     catch(CORBA::Exception& e)
     {
@@ -148,14 +151,9 @@ RTT::base::ChannelElementBase::shared_ptr RemoteInputPort::buildRemoteChannelOut
 
     // Input side is now ok and waiting for us to complete. We build our corba channel element too
     // and connect it to the remote side and vice versa.
-#ifndef CORBA_PORTS_DISABLE_SIGNAL
-    bool is_signalling = true;
-#else
-    bool is_signalling = false;
-#endif
     CRemoteChannelElement_i*  local =
         static_cast<CorbaTypeTransporter*>(type->getProtocol(ORO_CORBA_PROTOCOL_ID))
-                            ->createChannelElement_i(output_port.getInterface(), mpoa, policy.pull, is_signalling);
+                            ->createChannelElement_i(output_port.getInterface(), mpoa, policy);
 
     CRemoteChannelElement_var proxy = local->_this();
     local->setRemoteSide(remote);
@@ -175,28 +173,59 @@ RTT::base::ChannelElementBase::shared_ptr RemoteInputPort::buildRemoteChannelOut
             log(Error) << "Could not create out-of-band transport for port "<< name << " with transport id " << policy.transport <<endlog();
             log(Error) << "No such transport registered. Check your policy.transport settings or add the transport for type "<< type->getTypeName() <<endlog();
         }
-        RTT::base::ChannelElementBase::shared_ptr ceb = type->getProtocol(policy.transport)->createStream(this, policy, true);
+        RTT::base::ChannelElementBase::shared_ptr ceb = type->getProtocol(policy.transport)->createStream(this, policy, /* is_sender = */ true);
         if (ceb) {
             // insertion before corba.
-            ceb->setOutput( corba_ceb );
+            ceb->connectTo( corba_ceb, policy.mandatory );
             corba_ceb = ceb;
             log(Info) <<"Redirecting data for port "<<name << " to out-of-band protocol "<< policy.transport << endlog();
         } else {
             log(Error) << "The type transporter for type "<<type->getTypeName()<< " failed to create a dual channel for port " << name<<endlog();
         }
     } else {
-        // if no oob present, create a buffer at output port to guarantee RT delivery of data. (is always present in push&pull).
-        buf = type->buildDataStorage(policy);
-        assert(buf);
-        buf->setOutput( corba_ceb );
-        corba_ceb = buf;
+        // if no oob present, create a buffer at output port to guarantee RT delivery of data
+        // This is only needed for push connections. For pull, the buffer has already been created by ConnFactory<T>::buildChannelInput().
+        if (policy.pull == ConnPolicy::PUSH) {
+            buf = type->buildDataStorage(policy);
+            assert(buf);
+            buf->connectTo( corba_ceb, policy.mandatory );
+            corba_ceb = buf;
+        }
     }
-    // store the object reference in a map, for future lookup in channelReady().
-    // this is coupled with the use of channelReady(). We assume the caller will always pass
-    // chan->getOutputEndPoint() in that function.
-    channel_map[ corba_ceb->getOutputEndPoint().get() ] = CChannelElement::_duplicate( remote );
+
     // The ChannelElementBase object that represents reader_half on this side
     return corba_ceb;
+}
+
+bool RemoteInputPort::createConnection( internal::SharedConnectionBase::shared_ptr shared_connection, ConnPolicy const& policy )
+{
+    Logger::In in("RemoteInputPort::createConnection");
+
+    try {
+        CConnPolicy cpolicy = toCORBA(policy);
+        cpolicy.name_id = CORBA::string_dup( shared_connection->getName().c_str() );
+        if ( dataflow->createSharedConnection( this->getName().c_str(), cpolicy ) ) {
+            policy.name_id = cpolicy.name_id;
+            policy.data_size = cpolicy.data_size;
+            return true;
+        }
+    }
+    catch(CORBA::Exception& e)
+    {
+        log(Error) << "Caught CORBA exception while trying to add an input port to an existing connection:" << endlog();
+        log(Error) << CORBA_EXCEPTION_INFO( e ) <<endlog();
+        return false;
+    }
+
+    log(Error) << "Failed to connect remote InputPort '" << getName() << "' to shared connection '" << shared_connection->getName() << "', "
+               << "most likely because you tried to connect input ports in different processes." << endlog();
+    return false;
+}
+
+bool RemoteInputPort::disconnect(PortInterface* port)
+{
+    //just calling the implementation from the other side. (implemented already for RemoteOutputPort).
+    return port->disconnect(this);
 }
 
 RTT::base::PortInterface* RemoteInputPort::clone() const
@@ -205,25 +234,6 @@ RTT::base::PortInterface* RemoteInputPort::clone() const
 RTT::base::PortInterface* RemoteInputPort::antiClone() const
 { return type_info->outputPort(getName()); }
 
-
-bool RemoteInputPort::channelReady(RTT::base::ChannelElementBase::shared_ptr channel, RTT::ConnPolicy const& policy) {
-    if (! channel_map.count( channel.get() ) ) {
-        log(Error) <<"No such channel found in "<< getName() <<".channelReady( channel ): aborting connection."<<endlog();
-        return false;
-    }
-    try {
-        CChannelElement_ptr cce = channel_map[ channel.get() ];
-        assert( cce );
-        CConnPolicy cpolicy = toCORBA(policy);
-        return dataflow->channelReady( this->getName().c_str(),  cce, cpolicy );
-    }
-    catch(CORBA::Exception& e)
-    {
-        log(Error) <<"Remote call to "<< getName() <<".channelReady( channel ) failed with a CORBA exception: aborting connection."<<endlog();
-        log(Error) << CORBA_EXCEPTION_INFO( e ) <<endlog();
-        return false;
-    }
-}
 
 RemoteOutputPort::RemoteOutputPort(RTT::types::TypeInfo const* type_info,
         CDataFlowInterface_ptr dataflow, std::string const& reader_port,
@@ -242,6 +252,26 @@ DataSourceBase::shared_ptr RemoteOutputPort::getDataSource() const
     return DataSourceBase::shared_ptr();
 }
 
+
+bool RemoteOutputPort::disconnect(PortInterface* port)
+{
+    RemoteInputPort *portI = dynamic_cast<RemoteInputPort *>(port);
+
+    //if not a remote port, we can not handle at the moment!
+    if(portI == NULL){
+        Logger::In in("RemoteOutputPort::disconnect(PortInterface& port)");
+        log(Error) << "Port: " << port->getName() << " could not be disconnected from: " << this->getName()
+                   << " because it could not be casted to a RemoteInputPort type!" << nlog()
+                   << "Only disconnect of two remote ports supported by corba layer, yet!" << endlog();
+        return false;
+
+    }
+
+    //if Remote Input Port:
+    return dataflow->removeConnection(this->getName().c_str(), portI->getDataFlowInterface(),
+                                      portI->getName().c_str());
+}
+
 bool RemoteOutputPort::createConnection( RTT::base::InputPortInterface& sink, RTT::ConnPolicy const& policy )
 {
     try {
@@ -252,6 +282,7 @@ bool RemoteOutputPort::createConnection( RTT::base::InputPortInterface& sink, RT
             CDataFlowInterface_var cdfi = rip->getDataFlowInterface();
             if ( dataflow->createConnection( this->getName().c_str(), cdfi.in() , sink.getName().c_str(), cpolicy ) ) {
                 policy.name_id = cpolicy.name_id;
+                policy.data_size = cpolicy.data_size;
                 return true;
             } else
                 return false;
@@ -265,6 +296,7 @@ bool RemoteOutputPort::createConnection( RTT::base::InputPortInterface& sink, RT
         CDataFlowInterface_ptr cdfi = CDataFlowInterface_i::getRemoteInterface( sink.getInterface(), mpoa.in() );
         if ( dataflow->createConnection( this->getName().c_str(), cdfi , sink.getName().c_str(), cpolicy ) ) {
             policy.name_id = cpolicy.name_id;
+            policy.data_size = cpolicy.data_size;
             return true;
         }
     }

@@ -32,9 +32,12 @@
 #include <rtt/transports/corba/RemotePorts.hpp>
 #include <transports/corba/ServiceC.h>
 #include <transports/corba/CorbaLib.hpp>
+#include <transports/corba/CorbaConnPolicy.hpp>
 #include <transports/corba/RTTCorbaConversion.hpp>
 
 #include "operations_fixture.hpp"
+
+#include <memory>
 
 using namespace std;
 using corba::TaskContextProxy;
@@ -534,16 +537,13 @@ BOOST_AUTO_TEST_CASE(testDataFlowInterface)
 
 BOOST_AUTO_TEST_CASE( testPortConnections )
 {
-    // This test tests the differen port-to-port connections.
+    // This test tests the different port-to-port connections.
     ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
     ts2 = corba::TaskContextServer::Create( t2, false ); //no-naming
 
     // Create a default CORBA policy specification
-    RTT::corba::CConnPolicy policy;
-    policy.type = RTT::corba::CData;
+    RTT::corba::CConnPolicy policy = toCORBA(ConnPolicy::data());
     policy.init = false;
-    policy.lock_policy = RTT::corba::CLockFree;
-    policy.size = 0;
     policy.transport = ORO_CORBA_PROTOCOL_ID; // force creation of non-local connections
 
     corba::CDataFlowInterface_var ports  = ts->server()->ports();
@@ -600,6 +600,142 @@ BOOST_AUTO_TEST_CASE( testPortConnections )
     BOOST_CHECK(!mi2->connected());
 }
 
+BOOST_AUTO_TEST_CASE( testSharedConnections )
+{
+    // This test installs shared connections between mo1 and mo2 as writers and mi2 and mi3 as readers
+
+//    // Add a second input port mo3 to tc
+//#if __cplusplus > 199711L
+//    unique_ptr<RTT::OutputPort<double> >
+//#else
+//    auto_ptr<RTT::OutputPort<double> >
+//#endif
+//            mo3(new RTT::OutputPort<double>());
+
+//    tc->addPort("mo3", *mo3);
+
+    // Add a second input port mi3 to t2
+#if __cplusplus > 199711L
+    unique_ptr<RTT::InputPort<double> >
+#else
+    auto_ptr<RTT::InputPort<double> >
+#endif
+            mi3(new RTT::InputPort<double>());
+    t2->addPort("mi3", *mi3);
+
+    // This test tests shared connections port-to-port connections.
+    ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
+    ts2 = corba::TaskContextServer::Create( t2, false ); //no-naming
+
+    // must be running to catch event port signalling.
+    BOOST_CHECK( t2->start() );
+
+    // Create a CORBA policy specification
+    RTT::corba::CConnPolicy policy = toCORBA(ConnPolicy::data(ConnPolicy::LOCKED));
+    policy.init = false;
+    policy.transport = ORO_CORBA_PROTOCOL_ID; // force creation of non-local connections
+
+    corba::CDataFlowInterface_var ports  = ts->server()->ports();
+    corba::CDataFlowInterface_var ports2 = ts2->server()->ports();
+    double value = 0.0;
+
+    // Shared push connection...
+    policy.buffer_policy = RTT::corba::CShared;
+    policy.pull = false;
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi", policy) );
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi3", policy) );
+    BOOST_CHECK( ports2->createConnection("mo", ports2, "mi", policy) );
+    BOOST_CHECK( mi3->connected() );
+    BOOST_CHECK( mo2->connected() );
+    BOOST_ASSERT( mi2->getManager()->getSharedConnection() );
+    BOOST_ASSERT( mi3->getManager()->getSharedConnection() );
+    BOOST_CHECK_EQUAL( mi2->getManager()->getSharedConnection()->getName(), mi3->getManager()->getSharedConnection()->getName() );
+    BOOST_CHECK_EQUAL( mi3->read(value), NoData );
+    testPortDataConnection(); // communication between mo and mi should work the same as for private connections
+    BOOST_CHECK_EQUAL( mi3->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 2.0 );
+    BOOST_CHECK_EQUAL( mo2->write(3.0), WriteSuccess );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi3->read(value), NewData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi2->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+
+    ports->disconnectPort("mo"); // disconnect from the output side
+    ports2->disconnectPort("mo"); // disconnect from the output side
+    BOOST_CHECK( !mo1->connected() );
+    BOOST_CHECK( !mo2->connected() );
+    BOOST_CHECK( !mi2->connected() );
+    BOOST_CHECK( !mi3->connected() );
+
+    // Shared pull connection...
+    policy.buffer_policy = RTT::corba::CShared;
+    policy.pull = true;
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi", policy) );
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi3", policy) );
+    BOOST_CHECK( ports2->createConnection("mo", ports2, "mi", policy) );
+    BOOST_CHECK( mi3->connected() );
+    BOOST_CHECK( mo2->connected() );
+    BOOST_ASSERT( mi2->getManager()->getSharedConnection() );
+    BOOST_ASSERT( mi3->getManager()->getSharedConnection() );
+    BOOST_CHECK_EQUAL( mi2->getManager()->getSharedConnection()->getName(), mi3->getManager()->getSharedConnection()->getName() );
+    BOOST_CHECK_EQUAL( mi3->read(value), NoData );
+    testPortDataConnection(); // communication between mo and mi should work the same as for private connections
+    BOOST_CHECK_EQUAL( mi3->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 2.0 );
+    BOOST_CHECK_EQUAL( mo2->write(3.0), WriteSuccess );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi3->read(value), NewData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi2->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+
+    ports->disconnectPort("mo"); // disconnect from the output side
+    ports2->disconnectPort("mo"); // disconnect from the output side
+    BOOST_CHECK( !mo1->connected() );
+    BOOST_CHECK( !mo2->connected() );
+    BOOST_CHECK( !mi2->connected() );
+    BOOST_CHECK( !mi3->connected() );
+
+    // PerOutputPort pull connection...
+    policy.buffer_policy = RTT::corba::CPerOutputPort;
+    policy.pull = true;
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi", policy) );
+    BOOST_CHECK( ports->createConnection("mo", ports2, "mi3", policy) );
+    BOOST_CHECK( ports2->createConnection("mo", ports2, "mi", policy) ); // cannot use the DataFlowInterface CORBA API here, as it will find the local SharedConnection instance and fail.
+    BOOST_CHECK( mi3->connected() );
+    BOOST_CHECK( mo2->connected() );
+    BOOST_CHECK( mo1->getSharedBuffer() );
+    BOOST_CHECK( mo2->getSharedBuffer() );
+    BOOST_CHECK_EQUAL( mi3->read(value), NoData );
+    testPortDataConnection(); // communication between mo and mi should work the same as for private connections
+    BOOST_CHECK_EQUAL( mi3->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 2.0 );
+    BOOST_CHECK_EQUAL( mo1->write(3.0), WriteSuccess );
+    BOOST_CHECK_EQUAL( mo2->write(4.0), WriteSuccess );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi3->read(value), NewData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi2->read(value), NewData );
+    BOOST_CHECK_EQUAL( value, 4.0 );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi3->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 3.0 );
+    value = 0.0;
+    BOOST_CHECK_EQUAL( mi2->read(value), OldData );
+    BOOST_CHECK_EQUAL( value, 4.0 );
+
+    ports2->disconnectPort("mi"); // disconnect from the input side
+    ports2->disconnectPort("mi3"); // disconnect from the input side
+    BOOST_CHECK( !mo1->connected() );
+    BOOST_CHECK( !mo2->connected() );
+    BOOST_CHECK( !mi2->connected() );
+    BOOST_CHECK( !mi3->connected() );
+}
+
 BOOST_AUTO_TEST_CASE( testPortProxying )
 {
     ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
@@ -644,11 +780,105 @@ BOOST_AUTO_TEST_CASE( testPortProxying )
     BOOST_CHECK(!write_port->connected());
 
     // Test cloning
-    auto_ptr<base::InputPortInterface> read_clone(dynamic_cast<base::InputPortInterface*>(read_port->clone()));
+#if __cplusplus > 199711L
+    unique_ptr<base::InputPortInterface>
+#else
+    auto_ptr<base::InputPortInterface>
+#endif
+            read_clone(dynamic_cast<base::InputPortInterface*>(read_port->clone()));
     BOOST_CHECK(mo2->createConnection(*read_clone));
     BOOST_CHECK(read_clone->connected());
     BOOST_CHECK(!read_port->connected());
     mo2->disconnect();
+}
+
+BOOST_AUTO_TEST_CASE( testRemotePortDisconnect )
+{
+    ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
+    tp  = corba::TaskContextProxy::Create( ts->server(), true );
+    ts2  = corba::TaskContextServer::Create( t2, false ); //no-naming
+    tp2  = corba::TaskContextProxy::Create( ts2->server(), true );
+
+    // Create a default CORBA policy specification
+    RTT::ConnPolicy policy = ConnPolicy::data();
+    policy.init = false;
+    policy.transport = ORO_CORBA_PROTOCOL_ID; // force creation of non-local connections
+
+    base::PortInterface* untyped_port;
+
+    //mi1
+    untyped_port = tp->ports()->getPort("mi");
+    BOOST_CHECK(untyped_port);
+    base::InputPortInterface* read_port1 = dynamic_cast<base::InputPortInterface*>(tp->ports()->getPort("mi"));
+    BOOST_CHECK(read_port1);
+
+    //mi2
+    untyped_port = tp2->ports()->getPort("mi");
+    BOOST_CHECK(untyped_port);
+    base::InputPortInterface* read_port2 = dynamic_cast<base::InputPortInterface*>(tp2->ports()->getPort("mi"));
+    BOOST_CHECK(read_port2);
+
+    //mo2
+    untyped_port = tp2->ports()->getPort("mo");
+    BOOST_CHECK(untyped_port);
+    base::OutputPortInterface* write_port2 = dynamic_cast<base::OutputPortInterface*>(tp2->ports()->getPort("mo"));
+    BOOST_CHECK(write_port2);
+
+    //mo1
+    untyped_port = tp->ports()->getPort("mo");
+    BOOST_CHECK(untyped_port);
+    base::OutputPortInterface* write_port1 = dynamic_cast<base::OutputPortInterface*>(tp->ports()->getPort("mo"));
+    BOOST_CHECK(write_port1);
+
+    // Just make sure 'read_port' and 'write_port' are actually proxies and not
+    // the real thing
+    BOOST_CHECK(dynamic_cast<corba::RemoteInputPort*>(read_port1));
+    BOOST_CHECK(dynamic_cast<corba::RemoteInputPort*>(read_port2));
+    BOOST_CHECK(dynamic_cast<corba::RemoteOutputPort*>(write_port1));
+    BOOST_CHECK(dynamic_cast<corba::RemoteOutputPort*>(write_port2));
+
+    //create remote connections:
+    write_port2->connectTo(read_port1, policy);
+    BOOST_CHECK(read_port1->connected());
+    BOOST_CHECK(write_port2->connected());
+
+    //second connection to this input port
+    write_port1->connectTo(read_port1, policy);
+    BOOST_CHECK(write_port1->connected());
+
+    //disconnect single port connection (both remote), same tcs object.
+    write_port1->disconnect(read_port1);
+    BOOST_CHECK(read_port1->connected());
+    BOOST_CHECK(!write_port1->connected());
+
+    //disconnect single port connection, both remote, different tcs.
+    write_port2->disconnect(read_port1);
+    BOOST_CHECK(!read_port1->connected());
+
+    //check disconnecting call on reader port. (build connection again beforehand).
+    write_port2->connectTo(read_port1, policy);
+    BOOST_CHECK(read_port1->connected());
+    BOOST_CHECK(write_port2->connected());
+    BOOST_CHECK(read_port1->disconnect(write_port2));
+    BOOST_CHECK(!read_port1->connected());
+    BOOST_CHECK(!write_port2->connected());
+
+    //check connect and disconnect certain port, remote output to local input
+    //should give false cause not supported yet!
+    write_port2->connectTo(mi1, policy);
+    BOOST_CHECK(mi1->connected());
+    BOOST_CHECK(write_port2->connected());
+    BOOST_CHECK(!write_port2->disconnect(mi1));
+    mi1->disconnect(); //remove all connections works, so required for cleanup.
+
+    //check disconnect remote input port from local output port.
+    mo2->connectTo(read_port1, policy);
+    BOOST_CHECK(read_port1->connected());
+    BOOST_CHECK(mo2->connected());
+    BOOST_CHECK(read_port1->disconnect(mo2));
+    BOOST_CHECK(!mo2->connected());
+    BOOST_CHECK(!read_port1->connected());
+
 }
 
 BOOST_AUTO_TEST_CASE( testDataHalfs )
@@ -658,11 +888,8 @@ BOOST_AUTO_TEST_CASE( testDataHalfs )
     ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
 
     // Create a default CORBA policy specification
-    RTT::corba::CConnPolicy policy;
-    policy.type = RTT::corba::CData;
+    RTT::corba::CConnPolicy policy = toCORBA(ConnPolicy::data());
     policy.init = false;
-    policy.lock_policy = RTT::corba::CLockFree;
-    policy.size = 0;
     policy.transport = ORO_CORBA_PROTOCOL_ID; // force creation of non-local connections
 
     corba::CDataFlowInterface_var ports  = ts->server()->ports();
@@ -691,7 +918,7 @@ BOOST_AUTO_TEST_CASE( testDataHalfs )
 
     // test unbuffered Corba write --> C++ read
     cce = ports->buildChannelOutput("mi", policy);
-    ports->channelReady("mi", cce, policy);
+    cce->channelReady(policy);
     sample = new CORBA::Any();
     BOOST_REQUIRE( cce.in() );
 
@@ -715,11 +942,8 @@ BOOST_AUTO_TEST_CASE( testBufferHalfs )
     ts  = corba::TaskContextServer::Create( tc, false ); //no-naming
 
     // Create a default CORBA policy specification
-    RTT::corba::CConnPolicy policy;
-    policy.type = RTT::corba::CBuffer;
+    RTT::corba::CConnPolicy policy = toCORBA(ConnPolicy::buffer(10));
     policy.init = false;
-    policy.lock_policy = RTT::corba::CLockFree;
-    policy.size = 10;
     policy.transport = ORO_CORBA_PROTOCOL_ID; // force creation of non-local connections
 
     corba::CDataFlowInterface_var ports  = ts->server()->ports();
@@ -752,7 +976,7 @@ BOOST_AUTO_TEST_CASE( testBufferHalfs )
 
     // test unbuffered Corba write --> C++ read
     cce = ports->buildChannelOutput("mi", policy);
-    ports->channelReady("mi", cce, policy);
+    cce->channelReady(policy);
     sample = new CORBA::Any();
     BOOST_REQUIRE( cce.in() );
 

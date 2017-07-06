@@ -84,8 +84,9 @@ namespace RTT {
             bool connected() const;
             bool createStream( const ConnPolicy& policy );
             virtual bool addConnection(internal::ConnID* port_id, base::ChannelElementBase::shared_ptr channel_input, ConnPolicy const& policy);
-            void disconnect();
-            bool disconnect(base::PortInterface* p);
+            virtual void disconnect();
+            using PortClass::disconnect;
+            base::ChannelElementBase* getEndpoint() const;
         };
 
         /**
@@ -105,8 +106,11 @@ namespace RTT {
             bool keepsLastWrittenValue() const;
             void keepLastWrittenValue(bool new_flag);
 
-            using base::OutputPortInterface::createConnection;
+            virtual bool disconnect(PortInterface* port);
+            using RemotePort<base::OutputPortInterface>::disconnect;
+
             bool createConnection( base::InputPortInterface& sink, ConnPolicy const& policy );
+            using base::OutputPortInterface::createConnection;
 
             virtual base::DataSourceBase::shared_ptr getDataSource() const;
 
@@ -123,8 +127,6 @@ namespace RTT {
         class RemoteInputPort
             : public RemotePort<base::InputPortInterface>
         {
-            typedef std::map<base::ChannelElementBase*,RTT::corba::CChannelElement_var> ChannelMap;
-            ChannelMap channel_map;
         protected:
             /**
              * The ConnectionFactory calls this. Overload to do nothing when dealing with remote ports.
@@ -133,12 +135,15 @@ namespace RTT {
              * @param policy
              * @return
              */
-            virtual bool addConnection(internal::ConnID* port_id, base::ChannelElementBase::shared_ptr channel_input, ConnPolicy const& policy) { return true; }
+            virtual bool addConnection(internal::ConnID*, base::ChannelElementBase::shared_ptr, ConnPolicy const&) { return true; }
+
         public:
             RemoteInputPort(types::TypeInfo const* type_info,
                     CDataFlowInterface_ptr dataflow,
                     std::string const& name,
                     PortableServer::POA_ptr poa);
+
+            void clear();
 
             /**
              * This method will do more than just building the output half, it
@@ -158,19 +163,20 @@ namespace RTT {
                     base::InputPortInterface& reader_,
                     ConnPolicy const& policy);
 
+            /**
+             * Overridden version of \ref InputPortInterface::createConnection(internal::SharedConnectionBase::shared_ptr, ConnPolicy const&), which
+             * forwards the call to the remote data flow interface.
+             */
+            bool createConnection( internal::SharedConnectionBase::shared_ptr shared_connection, ConnPolicy const& policy = ConnPolicy() );
+            using base::InputPortInterface::createConnection;
+
             base::PortInterface* clone() const;
             base::PortInterface* antiClone() const;
 
-            base::DataSourceBase* getDataSource();
+            virtual bool disconnect(PortInterface* port);
+            using RemotePort<base::InputPortInterface>::disconnect;
 
-            /**
-             * For remote input port objects, this is forwarded to the other end
-             * over the Data Flow Interface. The given channel must be the
-             * output endpoint of a connection, which was built using buildRemoteChannelOutput.
-             * So channel->getOutputEndpoint() == channel
-             * @return
-             */
-            virtual bool channelReady(base::ChannelElementBase::shared_ptr channel, ConnPolicy const& policy);
+            base::DataSourceBase* getDataSource();
         };
     }
 }

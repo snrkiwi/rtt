@@ -94,6 +94,16 @@ namespace RTT
     TaskContextProxy::TaskContextProxy(std::string name, bool is_ior)
         : TaskContext("NotFound")
     {
+        initFromURIOrTaskname(name, is_ior);
+    }
+
+    TaskContextProxy::TaskContextProxy(): TaskContext("NotFound")
+    {
+
+    }
+
+    void TaskContextProxy::initFromURIOrTaskname(string name, bool is_ior)
+    {
         Logger::In in("TaskContextProxy");
         this->clear();
         this->setActivity( new SequentialActivity() );
@@ -139,7 +149,7 @@ namespace RTT
             CORBA::String_var nm = mtask->getName(); // force connect to object.
             std::string newname( nm.in() );
             this->provides()->setName( newname );
-            Logger::log() << Logger::Info << "Successfully connected to TaskContextServer '"+newname+"'."<<endlog();
+            Logger::log() << Logger::Info << "Successfully connected to TaskContextServer '"+name+"'."<<endlog();
             proxies[this] = mtask.in();
         }
         catch (CORBA::Exception &e) {
@@ -158,7 +168,7 @@ namespace RTT
 
         this->synchronize();
     }
-
+    
     TaskContextProxy::TaskContextProxy( ::RTT::corba::CTaskContext_ptr taskc)
         : TaskContext("CORBAProxy"), mtask( corba::CTaskContext::_duplicate(taskc) )
     {
@@ -570,7 +580,7 @@ namespace RTT
         if (! force_remote)
         {
             for (TaskContextServer::ServerMap::iterator it = TaskContextServer::servers.begin(); it != TaskContextServer::servers.end(); ++it)
-                if ( it->second.second->server()->_is_equivalent( t ) ) {
+                if ( it->second->server()->_is_equivalent( t ) ) {
                     log(Debug) << "Local server found !" <<endlog();
                     return it->first;
                 }
