@@ -61,6 +61,8 @@ namespace RTT
         typedef std::vector<TransportPlugin*> Transports;
         Transports transports;
         mutable os::Mutex type_lock;
+        
+        TypeInfo* typeInternal( const std::string& name ) const;
     public:
         ~TypeInfoRepository();
         typedef boost::shared_ptr<TypeInfoRepository> shared_ptr;
