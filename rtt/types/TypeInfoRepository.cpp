@@ -73,7 +73,7 @@ namespace RTT
         typerepos.reset();
     }
 
-    TypeInfo* TypeInfoRepository::type( const std::string& name ) const
+    TypeInfo* TypeInfoRepository::typeInternal( const std::string& name ) const
     {
         MutexLock lock(type_lock);
         map_t::const_iterator i = data.find( name );
@@ -82,10 +82,25 @@ namespace RTT
             string tkname = "/" + boost::replace_all_copy(boost::replace_all_copy(name, string("."), "/"), "<","</");
             i = data.find( tkname );
             if ( i == data.end())
+            {
                 return 0;
+            }
         }
         // found
         return i->second;
+    }
+
+    TypeInfo* TypeInfoRepository::type( const std::string& name ) const
+    {
+        // strip qualifier after the first space
+        std::string unqualified = name;
+        if ( unqualified.find(' ') != std::string::npos ) {
+            unqualified = unqualified.substr(0, unqualified.find(' '));
+        }
+
+        TypeInfo *ret = typeInternal(unqualified);
+
+        return ret;
     }
 
     TypeInfoRepository::~TypeInfoRepository()
